@@ -1,0 +1,74 @@
+{
+  "2026-04-27": [
+    {
+      "day": "Monday",
+      "date": "2026-04-27",
+      "topic": {
+        "title": "Musk v. Altman: The Future of AI",
+        "source_url": "https://www.technologyreview.com/2026/05/01/1136800/musk-v-altman-week-1-musk-says-he-was-duped-warns-ai-could-kill-us-all-and-admits-that-xai-distills-openais-models/",
+        "angle": "The high-stakes trial between Elon Musk and OpenAI is a wake-up call for business owners to understand the power and risks of AI and its potential impact on their industries"
+      },
+      "format": "text",
+      "post_text": "If you're still doing data analysis yourself, stop.\nYou're not just wasting time, you're also falling behind your competitors who are already using AI to automate tasks.\nThe trial between Elon Musk and OpenAI is a reminder that AI is not just a tool, but a game-changer for businesses.\n\n• We automated data analysis for a client in just 2 weeks, saving them 20 hours of work per week.\n• The key is to identify tasks that are repetitive and time-consuming, and automate them using AI.\n• By doing so, businesses can free up time and resources for more important things, such as strategy and growth.\n• The result is increased efficiency, productivity, and competitiveness.\n\nThe real question is, what's holding you back from using AI to automate tasks in your business?\nWhat's the one task you'd love to automate if you could?\nWe help businesses like yours build custom AI tools to stay ahead of the curve.\n#AIForBusiness #BusinessAutomation #TheTechTutors",
+      "design_brief": null,
+      "status": "posted",
+      "post_urn": "urn:li:share:7456297974965391360"
+    },
+    {
+      "day": "Tuesday",
+      "date": "2026-04-28",
+      "topic": {
+        "title": "Claude Code Alternative: Free AI Coding Tool",
+        "source_url": "https://venturebeat.com/infrastructure/claude-code-costs-up-to-usd200-a-month-goose-does-the-same-thing-for-free",
+        "angle": "Business owners can now access a free AI coding tool that rivals Claude Code, saving them up to $200 per month and increasing their development efficiency"
+      },
+      "format": "text",
+      "post_text": "Can you really afford to spend $200 per month on AI coding tools when there are free alternatives available? \nThe cost of AI coding tools can be a significant burden for many businesses, especially small and medium-sized enterprises. \n• Use free AI coding tools to save up to $200 per month\n• Increase development efficiency with automated coding\n• Explore open-source alternatives to proprietary coding tools\nAs businesses continue to adopt AI technology, the demand for affordable and efficient coding tools will only continue to grow. \nWhat are some other ways businesses can reduce their AI costs without sacrificing performance? \nThe Tech Tutors \n#AIcoding #FreeAItools #BusinessEfficiency",
+      "design_brief": null,
+      "status": "posted",
+      "post_urn": "urn:li:share:7456296861641887744"
+    },
+    {
+      "day": "Wednesday",
+      "date": "2026-04-29",
+      "topic": {
+        "title": "Operationalizing AI for Scale and Sovereignty",
+        "source_url": "https://www.technologyreview.com/2026/05/01/1136772/operationalizing-ai-for-scale-and-sovereignty/",
+        "angle": "Business owners can learn how to operationalize AI for scale and sovereignty by taking control of their own data and balancing ownership with the safe flow of high-quality data"
+      },
+      "format": "text",
+      "post_text": "Can AI really scale without sacrificing data sovereignty? \nBusiness owners face a dilemma in balancing ownership with the safe flow of high-quality data. \n• Take control of your data to make informed decisions\n• Balance data ownership with secure data exchange\n• Focus on high-quality data for better AI outcomes\nAs businesses scale, they must prioritize data sovereignty to maintain a competitive edge. \nWhat steps are you taking to ensure your business maintains control over its data in an AI-driven landscape? \nThe Tech Tutors \n#AIforBusiness #DataSovereignty #OperationalizingAI",
+      "design_brief": null,
+      "status": "posted",
+      "post_urn": null
+    },
+    {
+      "day": "Thursday",
+      "date": "2026-04-30",
+      "topic": {
+        "title": "Pentagon Strikes Classified AI Deals",
+        "source_url": "https://www.theverge.com/ai-artificial-intelligence/922113/pentagon-ai-classified-openai-google-nvidia",
+        "angle": "The Pentagon's new classified AI deals with top tech companies signal a significant shift in the adoption of AI in the defense industry, with potential implications for businesses in the sector"
+      },
+      "format": "text",
+      "post_text": "What if the Pentagon's latest AI deals change the game for defense businesses? \nThe US Department of Defense is investing heavily in AI, partnering with top tech companies to develop cutting-edge technologies. \nThis shift towards AI adoption has significant implications for businesses in the sector, from enhanced cybersecurity to improved operational efficiency.\n• Increased use of machine learning for predictive maintenance\n• Enhanced cybersecurity measures to protect sensitive data\n• Improved decision-making with data-driven insights\nAs the defense industry becomes more reliant on AI, companies must adapt to stay competitive. \nWhat role do you think AI will play in the future of defense contracting?\nThe Tech Tutors \n#AIForDefense #DefenseIndustry #ArtificialIntelligence",
+      "design_brief": null,
+      "status": "posted",
+      "post_urn": "urn:li:share:7456287684454633472"
+    },
+    {
+      "day": "Friday",
+      "date": "2026-05-01",
+      "topic": {
+        "title": "The Future of AI: Trends and Insights",
+        "source_url": "https://www.technologyreview.com/2026/05/01/1136779/cyber-insecurity-in-the-ai-era/",
+        "angle": "As AI continues to evolve, business owners must stay ahead of the curve by understanding the latest trends and insights, including the growing importance of cybersecurity in the AI era"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "skipped",
+      "post_urn": null
+    }
+  ]
+}

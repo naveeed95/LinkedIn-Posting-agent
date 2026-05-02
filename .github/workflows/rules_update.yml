@@ -1,0 +1,37 @@
+name: LinkedIn Rules Update
+
+on:
+  schedule:
+    - cron: '0 1 * * 0'  # Sunday 6am PKT
+  workflow_dispatch:
+
+jobs:
+  rules-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch and refresh LinkedIn rules
+        run: python -c "from linkedin_rules_fetcher import fetch_rules; fetch_rules()"
+
+      - name: Notify Discord of any updates
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: python discord_bot.py --rules-update
+
+      - name: Upload rules cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-rules
+          path: cache/linkedin_rules.json
+          retention-days: 14

@@ -1,0 +1,52 @@
+name: Analytics Poll and Report
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # 9am PKT
+    - cron: '0 14 * * *'  # 7pm PKT
+  workflow_dispatch:
+
+jobs:
+  analytics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download performance DB
+        uses: actions/download-artifact@v4
+        with:
+          name: performance-db
+          path: .
+        continue-on-error: true
+
+      - name: Poll LinkedIn metrics
+        env:
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORG_URN: ${{ secrets.LINKEDIN_ORG_URN }}
+        run: python analytics_tracker.py --poll
+
+      - name: Send analytics report to Discord
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: python discord_bot.py --send-report
+
+      - name: Upload performance DB
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-db
+          path: performance.db
+          retention-days: 90

@@ -1,0 +1,24 @@
+# Secrets — never commit
+.env
+
+# Database
+performance.db
+
+# Cache (keep .gitkeep, ignore generated JSON)
+cache/*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# Generated output
+output/
+
+# OS
+.DS_Store
+Thumbs.db

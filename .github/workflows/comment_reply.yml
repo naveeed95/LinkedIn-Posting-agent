@@ -1,0 +1,52 @@
+name: Comment Auto-Responder
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # every 2 hours
+  workflow_dispatch:
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download performance DB
+        uses: actions/download-artifact@v4
+        with:
+          name: performance-db
+          path: .
+        continue-on-error: true
+
+      - name: Download schedule
+        uses: actions/download-artifact@v4
+        with:
+          name: weekly-schedule
+          path: .
+        continue-on-error: true
+
+      - name: Fetch and queue comment replies
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORG_URN: ${{ secrets.LINKEDIN_ORG_URN }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_COMMENTS_CHANNEL_ID: ${{ secrets.DISCORD_COMMENTS_CHANNEL_ID }}
+        run: python auto_responder.py
+
+      - name: Upload performance DB
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-db
+          path: performance.db
+          retention-days: 90

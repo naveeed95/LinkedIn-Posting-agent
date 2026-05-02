@@ -1,0 +1,13 @@
+groq>=0.9.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+beautifulsoup4>=4.12.0
+Pillow>=10.0.0
+feedparser>=6.0.0
+discord.py>=2.3.0
+tavily-python>=0.3.0
+exa-py>=1.0.0
+supadata>=0.1.0
+playwright>=1.40.0
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
