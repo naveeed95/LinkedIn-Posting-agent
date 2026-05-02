@@ -96,12 +96,14 @@ Never use: delve, leverage, synergy, game-changer, revolutionary,
 """
 
 DAY_STRATEGY = {
-    0: "Monday — MOTIVATIONAL: Challenge a limiting belief business owners have about AI.",
-    1: "Tuesday — PRACTICAL TOOL: Spotlight a specific AI tool or automation. Focus on time/money saved.",
-    2: "Wednesday — HOW-TO: A clear step-by-step framework. Make it immediately actionable.",
-    3: "Thursday — INDUSTRY NEWS: A real AI development. Tell them what it means for THEIR business.",
-    4: "Friday — INSIGHT: A surprising truth about AI adoption. End the week with something memorable.",
+    0: "Monday — MOTIVATIONAL [TEXT]: Challenge a limiting belief business owners have about AI. Conversational, punchy text post.",
+    1: "Tuesday — PRACTICAL TOOL [SLIDES]: Spotlight a specific AI tool or automation. Design a visual LIST or STAT slide showing exact time/money saved.",
+    2: "Wednesday — HOW-TO [SLIDES]: A clear step-by-step framework. Design a STEPS carousel — numbered actions, immediately actionable.",
+    3: "Thursday — INDUSTRY NEWS [SLIDES]: A real AI development. Design a STAT or COMPARISON slide — data-driven visual showing business impact.",
+    4: "Friday — INSIGHT [TEXT]: A surprising truth about AI adoption. Conversational text post that ends the week memorably.",
 }
+
+DAY_FORMAT = {0: "text", 1: "design", 2: "design", 3: "design", 4: "text"}
 
 VARIANT_SEPARATOR = "---VARIANT 2---"
 
@@ -219,7 +221,16 @@ Day strategy:
 {day_block}
 
 Score each topic 1–10 for business-owner relevance. Pick best match per day.
-All posts are text-only. Always set format to "text".
+
+Format assignments (fixed — do not change):
+- Day 0 (Monday): format = "text"
+- Day 1 (Tuesday): format = "design"
+- Day 2 (Wednesday): format = "design"
+- Day 3 (Thursday): format = "design"
+- Day 4 (Friday): format = "text"
+
+For design days, pick topics that translate well into a visual (stats, steps, comparisons, lists of tools).
+For text days, pick topics that work as a punchy conversational post.
 
 Return ONLY a valid JSON array with exactly 5 objects (day_index 0–4):
 [
