@@ -1,0 +1,94 @@
+name: Weekly Content Plan
+
+on:
+  schedule:
+    - cron: '0 13 * * 0'  # Sunday 6pm PKT (UTC+5)
+  workflow_dispatch:
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Download performance DB
+        uses: actions/download-artifact@v4
+        with:
+          name: performance-db
+          path: .
+        continue-on-error: true
+
+      - name: Download LinkedIn rules cache
+        uses: actions/download-artifact@v4
+        with:
+          name: linkedin-rules
+          path: cache/
+        continue-on-error: true
+
+      - name: Download existing schedule
+        uses: actions/download-artifact@v4
+        with:
+          name: weekly-schedule
+          path: .
+        continue-on-error: true
+
+      - name: Generate weekly content plan
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          SUPADATA_API_KEY: ${{ secrets.SUPADATA_API_KEY }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORG_URN: ${{ secrets.LINKEDIN_ORG_URN }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: python run.py plan
+
+      - name: Notify Discord of weekly plan
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: |
+          python -c "
+          import json
+          from discord_bot import _send_message, _channel
+          with open('weekly_schedule.json') as f:
+              schedule = json.load(f)
+          weeks = sorted(schedule.keys())
+          slots = schedule[weeks[-1]]
+          lines = ['📅 **THIS WEEK CONTENT PLAN**\n']
+          for slot in slots:
+              topic = slot.get('topic') or {}
+              fmt = slot.get('format', 'text').upper()
+              title = topic.get('title', '— not planned —')
+              lines.append(f\"**{slot['day']}** [{fmt}] {title}\")
+          lines.append('\nApprovals arrive in #linkedin-approvals each morning at 7am.')
+          _send_message(_channel('DISCORD_ANALYTICS_CHANNEL_ID'), '\n'.join(lines))
+          "
+
+      - name: Upload schedule artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-schedule
+          path: weekly_schedule.json
+          retention-days: 90
+
+      - name: Upload performance DB
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-db
+          path: performance.db
+          retention-days: 90
