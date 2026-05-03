@@ -256,6 +256,36 @@ def fetch_google_trends() -> list[dict]:
     return items
 
 
+# ── Article content fetcher ────────────────────────────────────────────────────
+
+def fetch_article_content(url: str, max_chars: int = 3000) -> str:
+    """Scrape and return the main readable text from an article URL."""
+    if not url or "ycombinator.com" in url or "reddit.com" in url:
+        return ""
+    try:
+        from bs4 import BeautifulSoup
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.content, "html.parser")
+        for tag in soup(["script", "style", "nav", "header", "footer", "aside", "iframe", "form", "button"]):
+            tag.decompose()
+        main = (
+            soup.find("article") or
+            soup.find("main") or
+            soup.find(class_=lambda c: c and any(
+                x in str(c).lower() for x in ["article", "post-body", "entry-content", "article-body", "story-body"]
+            )) or
+            soup.find("body")
+        )
+        text = (main or soup).get_text(separator=" ", strip=True)
+        text = re.sub(r"\s+", " ", text).strip()
+        print(f"  [research] Article fetched: {len(text)} chars from {url[:60]}")
+        return text[:max_chars]
+    except Exception as e:
+        print(f"  [research] Article fetch failed: {e}")
+        return ""
+
+
 # ── Deep targeted daily research ───────────────────────────────────────────────
 
 def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> list[dict]:

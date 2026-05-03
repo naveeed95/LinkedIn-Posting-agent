@@ -387,6 +387,90 @@ def generate_text_post(topic: dict) -> str:
     return generate_text_post_variants(topic, n=1)[0]
 
 
+def generate_carousel_content(
+    topic: dict,
+    article_text: str = "",
+    top_hashtags: list[str] | None = None,
+) -> dict:
+    """Generate structured 5-slide carousel content. Llama reads the full article."""
+    rules_prompt  = _get_rules_prompt()
+    hashtag_block = f"\nTop-performing hashtags (use 2-3 in caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
+
+    if article_text:
+        source_block = f"\nFULL ARTICLE TEXT (extract REAL numbers, facts, and quotes from this — do NOT make up statistics):\n{article_text[:2800]}\n"
+    elif topic.get("research_context"):
+        source_block = f"\nRESEARCH SOURCES:\n{topic['research_context']}\n"
+    else:
+        source_block = ""
+
+    prompt = f"""You are creating LinkedIn carousel content for The Tech Tutors — a company that builds custom AI tools and automations for small and medium businesses.
+
+TOPIC:  {topic['title']}
+ANGLE:  {topic['angle']}
+SOURCE: {topic['source_url']}
+{source_block}{hashtag_block}
+
+TARGET AUDIENCE: Small/medium business owners, 30-55. Time-pressed, skeptical of hype. They want SPECIFIC numbers and outcomes — not vague advice.
+
+BRAND VOICE: Direct, confident, zero fluff. Like a knowledgeable friend. Grade 6 reading level. Short sentences win.
+
+CRITICAL RULES:
+- Use REAL specific numbers from the article. If no number exists, use a reasonable estimate and flag it as "est."
+- Every point must be immediately useful or surprising
+- No corporate jargon. No "leverage", "synergy", "game-changer"
+- Each slide has ONE job. Do not mix messages.
+
+CREATE CONTENT FOR 5 SLIDES:
+
+SLIDE 1 — HOOK (makes someone stop scrolling)
+  headline: Bold statement or provocative fact, max 8 words, makes them NEED to read on
+  subheadline: What they'll learn from this carousel, max 10 words
+
+SLIDE 2 — SITUATION (3 hard facts about what's happening right now)
+  section_title: "WHAT'S HAPPENING" (exact wording)
+  stats: exactly 3 items, each with:
+    stat: The number itself — e.g. "67%", "10 hrs/week", "$4,200 saved" — max 5 words
+    context: Plain English explanation of that number — max 12 words
+
+SLIDE 3 — IMPACT (why SMB owners specifically should care)
+  section_title: "WHY YOUR BUSINESS IS AFFECTED" (exact wording)
+  impacts: exactly 3 items, each with:
+    title: The specific outcome for an SMB — max 7 words, starts with a noun
+    detail: One supporting fact with a number or timeframe — max 14 words
+
+SLIDE 4 — ACTION (3 things to do THIS week, not someday)
+  section_title: "YOUR ACTION PLAN" (exact wording)
+  steps: exactly 3 steps, each with:
+    action: Strong verb + what to do — max 7 words
+    detail: Specific how-to with a tool name or timeframe — max 14 words
+
+SLIDE 5 — TAKEAWAY + CTA
+  takeaway: One sentence they will screenshot. Quotable. Punchy. Max 18 words.
+  cta: "Follow The Tech Tutors for weekly AI insights that grow your business" (exact wording)
+
+ALSO: caption — full LinkedIn post (1,200-1,800 chars):
+  - Hook line first (single punchy line, max 12 words)
+  - Reference 2-3 specific facts from the slides
+  - Every sentence on its own line, blank line between sections
+  - End with ONE specific question relevant to their business
+  - Last line: 3-5 hashtags including #TheTechTutors
+
+Return ONLY valid JSON, no markdown fences:
+{{
+  "slide1": {{"headline": "...", "subheadline": "..."}},
+  "slide2": {{"section_title": "WHAT'S HAPPENING", "stats": [{{"stat": "...", "context": "..."}}, {{"stat": "...", "context": "..."}}, {{"stat": "...", "context": "..."}}]}},
+  "slide3": {{"section_title": "WHY YOUR BUSINESS IS AFFECTED", "impacts": [{{"title": "...", "detail": "..."}}, {{"title": "...", "detail": "..."}}, {{"title": "...", "detail": "..."}}]}},
+  "slide4": {{"section_title": "YOUR ACTION PLAN", "steps": [{{"action": "...", "detail": "..."}}, {{"action": "...", "detail": "..."}}, {{"action": "...", "detail": "..."}}]}},
+  "slide5": {{"takeaway": "...", "cta": "Follow The Tech Tutors for weekly AI insights that grow your business"}},
+  "caption": "..."
+}}"""
+
+    raw    = _generate(prompt, system_extra=rules_prompt, max_tokens=2500)
+    result = json.loads(_extract_json(raw, "{"))
+    result["caption"] = _fix_post_quality(result["caption"])
+    return result
+
+
 def generate_research_report(
     topic: dict,
     hint: str = "",

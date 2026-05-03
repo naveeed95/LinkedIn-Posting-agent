@@ -16,13 +16,13 @@ from datetime import date, datetime
 from content_generator import (
     choose_weekly_strategy,
     engagement_scorer,
-    generate_research_report,
+    generate_carousel_content,
     generate_text_post_variants,
     plan_weekly_posts,
 )
-from designer import generate_research_pdf
+from designer import generate_carousel_slides
+from research import fetch_article_content, fetch_deep_topic_research, fetch_trending_topics
 from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_document, post_to_linkedin_with_image
-from research import fetch_deep_topic_research, fetch_trending_topics
 from scheduler import (
     build_week_slots,
     get_recent_topics,
@@ -211,33 +211,36 @@ def cmd_post(preview: bool = False, force: bool = False):
             print("Skipped.")
 
     elif fmt == "design":
-        print("Generating research report with AI...\n")
-        report = generate_research_report(topic)
-        slot["design_brief"] = report
+        print("Fetching full article content...")
+        article_text = fetch_article_content(topic.get("source_url", ""))
+
+        print("Generating carousel content with AI...\n")
+        content = generate_carousel_content(topic, article_text=article_text)
+        slot["design_brief"] = content
 
         print("=" * 60)
-        print(f"HEADLINE    : {report.get('headline', '')}")
-        print(f"\nSUMMARY     : {report.get('executive_summary', '')[:200]}...")
-        print(f"\nFINDINGS    :")
-        for i, f in enumerate(report.get("key_findings", []), 1):
-            print(f"  {i}. {f}")
-        print(f"\nCAPTION     :")
-        print(report["caption"][:300] + "...")
+        print(f"HOOK    : {content.get('slide1', {}).get('headline', '')}")
+        print(f"SLIDE 2 : {content.get('slide2', {}).get('section_title', '')} — {len(content.get('slide2', {}).get('stats', []))} stats")
+        print(f"SLIDE 3 : {content.get('slide3', {}).get('section_title', '')} — {len(content.get('slide3', {}).get('impacts', []))} impacts")
+        print(f"SLIDE 4 : {content.get('slide4', {}).get('section_title', '')} — {len(content.get('slide4', {}).get('steps', []))} steps")
+        print(f"SLIDE 5 : {content.get('slide5', {}).get('takeaway', '')[:80]}...")
+        print(f"CAPTION : {len(content.get('caption', ''))} chars")
         print("=" * 60)
 
-        print("\nGenerating research PDF...")
-        pdf_path = generate_research_pdf(report, slot["date"], topic.get("source_url", ""))
-        print(f"PDF: {pdf_path}\n")
+        print("\nBuilding 5-slide carousel PDF...")
+        pdf_path, preview_path = generate_carousel_slides(content, slot["date"])
+        print(f"PDF:     {pdf_path}")
+        print(f"Preview: {preview_path}\n")
 
         if preview:
             update_slot(slot)
             print("Preview mode — not published.")
             return
 
-        answer = input("Post this research PDF to LinkedIn? [Y/n]: ").strip().lower()
+        answer = input("Post this carousel to LinkedIn? [Y/n]: ").strip().lower()
         if answer in ("", "y", "yes"):
-            print("Uploading research PDF and publishing...")
-            result = post_to_linkedin_with_document(report["caption"], pdf_path)
+            print("Uploading carousel and publishing...")
+            result = post_to_linkedin_with_document(content["caption"], pdf_path)
             slot["status"]   = "posted"
             slot["post_urn"] = result["urn"]
             update_slot(slot)
@@ -341,10 +344,15 @@ def cmd_auto():
     if fmt == "design":
         hint = ""
         for attempt in range(max_regenerations + 1):
-            print(f"Generating research report (attempt {attempt + 1})...")
-            report = generate_research_report(topic, hint=hint, top_hashtags=top_hashtags or None)
+            print(f"Fetching article + generating carousel (attempt {attempt + 1})...")
+            article_text = fetch_article_content(topic.get("source_url", ""))
+            content = generate_carousel_content(
+                topic, article_text=article_text, top_hashtags=top_hashtags or None
+            )
+            if hint:
+                content["_hint"] = hint
 
-            msg_id = send_design_approval_message(report, topic, day)
+            msg_id = send_design_approval_message(content, topic, day)
             if not msg_id:
                 print("Discord not configured — falling back to interactive mode.")
                 cmd_post()
@@ -354,20 +362,20 @@ def cmd_auto():
             action = decision.get("action")
 
             if action == "post":
-                print("Generating research PDF...")
-                pdf_path = generate_research_pdf(report, slot["date"], topic.get("source_url", ""))
+                print("Building 5-slide carousel PDF...")
+                pdf_path, _ = generate_carousel_slides(content, slot["date"])
 
-                print("Uploading research PDF to LinkedIn...")
-                result = post_to_linkedin_with_document(report["caption"], pdf_path)
+                print("Uploading carousel to LinkedIn...")
+                result = post_to_linkedin_with_document(content["caption"], pdf_path)
                 slot["status"]       = "posted"
                 slot["post_urn"]     = result["urn"]
-                slot["design_brief"] = report
+                slot["design_brief"] = content
                 update_slot(slot)
 
                 try:
                     log_post({
                         "post_urn":       result["urn"],
-                        "post_text":      report["caption"],
+                        "post_text":      content["caption"],
                         "topic_title":    topic["title"],
                         "day_of_week":    day,
                         "posted_at":      datetime.now().isoformat(),
@@ -385,7 +393,7 @@ def cmd_auto():
                     if post_first_comment(result["urn"], comment):
                         print("First comment with source link posted.")
 
-                send_posted_confirmation(result["url"], 1, report["caption"])
+                send_posted_confirmation(result["url"], 1, content["caption"])
                 print(f"Live: {result['url']}")
                 return
 

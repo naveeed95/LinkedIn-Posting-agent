@@ -329,6 +329,294 @@ def generate_graphic(brief: dict, date_str: str) -> str:
     return preview
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEW CAROUSEL SYSTEM — 5 fixed slide layouts
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _slide_hook(data: dict, num: int, total: int) -> Image.Image:
+    """Slide 1 — HOOK: big headline, subheadline, swipe prompt."""
+    img, draw = _canvas()
+
+    # Decorative corner circles
+    draw.ellipse([(CANVAS_W - 260, -130), (CANVAS_W + 60, 190)], fill=DARK_BLUE)
+    draw.ellipse([(-60, CANVAS_H - 210), (190, CANVAS_H + 60)], fill=DARK_BLUE)
+
+    y = _top_bar(draw, num, total)
+    content_w = CANVAS_W - 2 * PAD
+
+    # Headline
+    f_head = _f("ariblk.ttf", 70)
+    headline = data.get("headline", "").upper()
+    lines = _wrap(headline, f_head, draw, content_w)[:3]
+    total_h = len(lines) * 84 + 28 + 60
+    ty = (CANVAS_H - 72 - y) // 2 + y - total_h // 2
+
+    for line in lines:
+        lw = draw.textbbox((0, 0), line, font=f_head)[2]
+        draw.text(((CANVAS_W - lw) // 2 + 3, ty + 3), line, font=f_head, fill=(5, 15, 30))
+        draw.text(((CANVAS_W - lw) // 2, ty), line, font=f_head, fill=WHITE)
+        ty += 84
+
+    # Blue divider
+    ty += 10
+    draw.rectangle([(CANVAS_W // 2 - 90, ty), (CANVAS_W // 2 + 90, ty + 5)], fill=BLUE)
+    ty += 24
+
+    # Subheadline
+    f_sub = _f("arialbd.ttf", 30)
+    subheadline = data.get("subheadline", "")
+    for line in _wrap(subheadline, f_sub, draw, content_w - 60)[:2]:
+        lw = draw.textbbox((0, 0), line, font=f_sub)[2]
+        draw.text(((CANVAS_W - lw) // 2, ty), line, font=f_sub, fill=BLUE_LT)
+        ty += 44
+
+    # Swipe prompt
+    ty += 20
+    f_swipe = _f("arial.ttf", 22)
+    swipe = "Swipe to learn more  ->"
+    sw = draw.textbbox((0, 0), swipe, font=f_swipe)[2]
+    draw.text(((CANVAS_W - sw) // 2, ty), swipe, font=f_swipe, fill=MUTED)
+
+    _bottom_bar(img, draw)
+    return img
+
+
+def _slide_situation(data: dict, num: int, total: int) -> Image.Image:
+    """Slide 2 — SITUATION: 3 stat cards (number + context)."""
+    img, draw = _canvas()
+    y = _top_bar(draw, num, total) + 16
+    content_w = CANVAS_W - 2 * PAD
+
+    # Section title
+    f_sec = _f("arialbd.ttf", 34)
+    title = data.get("section_title", "WHAT'S HAPPENING")
+    draw.text((PAD, y), title, font=f_sec, fill=BLUE)
+    y += 44
+    tw = draw.textbbox((0, 0), title, font=f_sec)[2]
+    draw.rectangle([(PAD, y), (PAD + tw, y + 4)], fill=BLUE)
+    y += 20
+
+    stats = data.get("stats", [])[:3]
+    avail = CANVAS_H - 72 - y - 16
+    card_h = (avail - (len(stats) - 1) * 12) // max(len(stats), 1)
+    card_h = min(card_h, 172)
+
+    f_stat    = _f("ariblk.ttf",  52)
+    f_context = _f("arialbd.ttf", 26)
+
+    for i, item in enumerate(stats):
+        cy = y + i * (card_h + 12)
+        draw.rounded_rectangle([(PAD, cy), (CANVAS_W - PAD, cy + card_h)], radius=14, fill=CARD_BG)
+        draw.rounded_rectangle([(PAD, cy), (PAD + 8, cy + card_h)], radius=14, fill=BLUE)
+
+        # Stat number (big, blue)
+        stat_text = item.get("stat", "")
+        stw = draw.textbbox((0, 0), stat_text, font=f_stat)[2]
+        draw.text((PAD + 28, cy + (card_h - 56) // 2), stat_text, font=f_stat, fill=BLUE)
+
+        # Context (white, right of stat)
+        ctx_x = PAD + 28 + stw + 20
+        ctx_w = CANVAS_W - PAD - ctx_x - 10
+        context = item.get("context", "")
+        ctx_lines = _wrap(context, f_context, draw, ctx_w)[:3]
+        ctx_total = len(ctx_lines) * 34
+        ctx_y = cy + (card_h - ctx_total) // 2
+        for ln in ctx_lines:
+            draw.text((ctx_x, ctx_y), ln, font=f_context, fill=WHITE)
+            ctx_y += 34
+
+    _bottom_bar(img, draw)
+    return img
+
+
+def _slide_impact(data: dict, num: int, total: int) -> Image.Image:
+    """Slide 3 — IMPACT: 3 business impact items with title + detail."""
+    img, draw = _canvas()
+    y = _top_bar(draw, num, total) + 16
+    content_w = CANVAS_W - 2 * PAD
+
+    f_sec    = _f("arialbd.ttf", 28)
+    f_title  = _f("arialbd.ttf", 28)
+    f_detail = _f("arial.ttf",   23)
+    f_num    = _f("ariblk.ttf",  38)
+
+    title = data.get("section_title", "WHY YOUR BUSINESS IS AFFECTED")
+    draw.text((PAD, y), title, font=f_sec, fill=BLUE)
+    y += 40
+    tw = draw.textbbox((0, 0), title, font=f_sec)[2]
+    draw.rectangle([(PAD, y), (min(PAD + tw, CANVAS_W - PAD), y + 4)], fill=BLUE)
+    y += 22
+
+    impacts = data.get("impacts", [])[:3]
+    avail   = CANVAS_H - 72 - y - 16
+    card_h  = (avail - (len(impacts) - 1) * 10) // max(len(impacts), 1)
+    card_h  = min(card_h, 185)
+
+    for i, item in enumerate(impacts):
+        cy = y + i * (card_h + 10)
+        draw.rounded_rectangle([(PAD, cy), (CANVAS_W - PAD, cy + card_h)], radius=14, fill=CARD_BG)
+        draw.rounded_rectangle([(PAD, cy), (PAD + 8, cy + card_h)], radius=14, fill=BLUE)
+
+        # Number circle
+        ncx, ncy, r = PAD + 46, cy + card_h // 2, 28
+        draw.ellipse([(ncx - r, ncy - r), (ncx + r, ncy + r)], fill=BLUE)
+        ns = str(i + 1)
+        nw = draw.textbbox((0, 0), ns, font=f_num)[2]
+        draw.text((ncx - nw // 2, ncy - 24), ns, font=f_num, fill=WHITE)
+
+        tx, tw2 = PAD + 92, content_w - 92
+        t_lines = _wrap(item.get("title", ""), f_title, draw, tw2)[:1]
+        d_lines = _wrap(item.get("detail", ""), f_detail, draw, tw2)[:2]
+        th = len(t_lines) * 36 + len(d_lines) * 30
+        ts = cy + (card_h - th) // 2
+        for ln in t_lines:
+            draw.text((tx, ts), ln, font=f_title, fill=WHITE)
+            ts += 36
+        for ln in d_lines:
+            draw.text((tx, ts), ln, font=f_detail, fill=MUTED)
+            ts += 30
+
+    _bottom_bar(img, draw)
+    return img
+
+
+def _slide_action(data: dict, num: int, total: int) -> Image.Image:
+    """Slide 4 — ACTION PLAN: 3 numbered steps with action + detail."""
+    img, draw = _canvas()
+    y = _top_bar(draw, num, total) + 16
+
+    f_sec    = _f("arialbd.ttf", 34)
+    f_action = _f("arialbd.ttf", 26)
+    f_detail = _f("arial.ttf",   22)
+    f_num    = _f("ariblk.ttf",  56)
+
+    title = data.get("section_title", "YOUR ACTION PLAN")
+    draw.text((PAD, y), title, font=f_sec, fill=BLUE)
+    y += 44
+    tw = draw.textbbox((0, 0), title, font=f_sec)[2]
+    draw.rectangle([(PAD, y), (PAD + tw, y + 4)], fill=BLUE)
+    y += 22
+
+    steps   = data.get("steps", [])[:3]
+    content_w = CANVAS_W - 2 * PAD
+    avail   = CANVAS_H - 72 - y - 16
+    card_h  = (avail - (len(steps) - 1) * 12) // max(len(steps), 1)
+    card_h  = min(card_h, 195)
+
+    for i, step in enumerate(steps):
+        cy = y + i * (card_h + 12)
+        draw.rounded_rectangle([(PAD, cy), (CANVAS_W - PAD, cy + card_h)], radius=14, fill=CARD_BG)
+
+        # Big step number on left
+        num_text = str(i + 1)
+        nw = draw.textbbox((0, 0), num_text, font=f_num)[2]
+        draw.text((PAD + 22, cy + (card_h - 60) // 2), num_text, font=f_num, fill=BLUE)
+
+        # Vertical blue separator
+        sep_x = PAD + 22 + nw + 18
+        draw.rectangle([(sep_x, cy + 18), (sep_x + 4, cy + card_h - 18)], fill=DARK_LINE)
+
+        # Action + detail
+        tx, tw2 = sep_x + 22, CANVAS_W - PAD - sep_x - 26
+        a_lines = _wrap(step.get("action", ""), f_action, draw, tw2)[:1]
+        d_lines = _wrap(step.get("detail", ""), f_detail, draw, tw2)[:2]
+        th = len(a_lines) * 34 + len(d_lines) * 28
+        ts = cy + (card_h - th) // 2
+        for ln in a_lines:
+            draw.text((tx, ts), ln, font=f_action, fill=WHITE)
+            ts += 34
+        for ln in d_lines:
+            draw.text((tx, ts), ln, font=f_detail, fill=MUTED)
+            ts += 28
+
+    _bottom_bar(img, draw)
+    return img
+
+
+def _slide_cta(data: dict, num: int, total: int) -> Image.Image:
+    """Slide 5 — TAKEAWAY + CTA."""
+    img, draw = _canvas()
+
+    # Decorative overlays
+    draw.rectangle([(0, 0), (CANVAS_W, 8)], fill=BLUE)
+    draw.ellipse([(-100, CANVAS_H - 340), (280, CANVAS_H + 80)], fill=DARK_BLUE)
+    draw.ellipse([(CANVAS_W - 220, -100), (CANVAS_W + 90, 250)], fill=DARK_BLUE)
+
+    f_brand   = _f("arialbd.ttf", 24)
+    draw.text((PAD, 20), "THE TECH TUTORS", font=f_brand, fill=BLUE)
+    counter = f"{num} / {total}"
+    cw = draw.textbbox((0, 0), counter, font=f_brand)[2]
+    draw.text((CANVAS_W - PAD - cw, 20), counter, font=f_brand, fill=MUTED)
+
+    content_w = CANVAS_W - 2 * PAD
+    cy = CANVAS_H // 2 - 130
+
+    # Takeaway quote
+    f_quote = _f("arialbd.ttf", 32)
+    takeaway = '"' + data.get("takeaway", "") + '"'
+    q_lines = _wrap(takeaway, f_quote, draw, content_w)[:3]
+    for line in q_lines:
+        lw = draw.textbbox((0, 0), line, font=f_quote)[2]
+        draw.text(((CANVAS_W - lw) // 2 + 2, cy + 2), line, font=f_quote, fill=(5, 15, 30))
+        draw.text(((CANVAS_W - lw) // 2, cy), line, font=f_quote, fill=WHITE)
+        cy += 44
+
+    cy += 20
+    draw.rectangle([(CANVAS_W // 2 - 80, cy), (CANVAS_W // 2 + 80, cy + 4)], fill=BLUE)
+    cy += 28
+
+    # "Follow" line
+    f_follow = _f("ariblk.ttf", 36)
+    follow = "Follow The Tech Tutors"
+    fw = draw.textbbox((0, 0), follow, font=f_follow)[2]
+    draw.text(((CANVAS_W - fw) // 2, cy), follow, font=f_follow, fill=BLUE)
+    cy += 50
+
+    f_cta = _f("arial.ttf", 24)
+    cta = "for weekly AI insights that grow your business"
+    ctaw = draw.textbbox((0, 0), cta, font=f_cta)[2]
+    draw.text(((CANVAS_W - ctaw) // 2, cy), cta, font=f_cta, fill=MUTED)
+    cy += 50
+
+    # Logo
+    if LOGO_PATH.exists():
+        try:
+            logo = Image.open(LOGO_PATH).convert("RGBA")
+            logo.thumbnail((64, 64))
+            img.paste(logo, ((CANVAS_W - 64) // 2, cy), logo)
+        except Exception:
+            pass
+
+    # Footer bar
+    draw.rectangle([(0, CANVAS_H - 52), (CANVAS_W, CANVAS_H)], fill=(8, 18, 30))
+    f_site = _f("arialbd.ttf", 22)
+    site = "the-tech-tutors.vercel.app"
+    sw = draw.textbbox((0, 0), site, font=f_site)[2]
+    draw.text(((CANVAS_W - sw) // 2, CANVAS_H - 40), site, font=f_site, fill=BLUE)
+
+    return img
+
+
+def generate_carousel_slides(content: dict, date_str: str) -> tuple[str, str]:
+    """Build 5-slide carousel PDF from structured content. Returns (pdf_path, preview_png_path)."""
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    total = 5
+    slides = [
+        _slide_hook(content.get("slide1", {}), 1, total),
+        _slide_situation(content.get("slide2", {}), 2, total),
+        _slide_impact(content.get("slide3", {}), 3, total),
+        _slide_action(content.get("slide4", {}), 4, total),
+        _slide_cta(content.get("slide5", {}), 5, total),
+    ]
+
+    pdf_path     = str(OUTPUT_DIR / f"{date_str}_carousel.pdf")
+    preview_path = str(OUTPUT_DIR / f"{date_str}_slide1.png")
+    slides[0].save(pdf_path, save_all=True, append_images=slides[1:])
+    slides[0].save(preview_path, "PNG")
+    print(f"  [designer] 5 slides -> {pdf_path}")
+    return pdf_path, preview_path
+
+
 def generate_research_pdf(report: dict, date_str: str, source_url: str = "") -> str:
     """Generate a branded 2-3 page research PDF. Returns PDF path."""
     from reportlab.lib.pagesizes import A4
