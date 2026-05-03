@@ -2,7 +2,7 @@ name: Daily LinkedIn Post
 
 on:
   schedule:
-    - cron: '0 2 * * 1-5'  # 7am PKT (UTC+5), Mon-Fri
+    - cron: '0 8 * * 1-5'  # 1pm PKT (UTC+5), Mon-Fri
   workflow_dispatch:
 
 jobs:
@@ -40,6 +40,7 @@ jobs:
       - name: Run auto post
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
           LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
           LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}

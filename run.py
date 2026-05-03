@@ -37,8 +37,8 @@ from scheduler import (
 
 def _timing_note():
     now = datetime.now()
-    if now.weekday() < 5 and not (7 <= now.hour <= 11):
-        print(f"Note: it's {now.strftime('%H:%M')} — best LinkedIn engagement is 8–10am weekdays.\n")
+    if now.weekday() < 5 and not (12 <= now.hour <= 15):
+        print(f"Note: it's {now.strftime('%H:%M')} — scheduled posting time is 1pm PKT weekdays.\n")
 
 
 def cmd_plan():
@@ -97,13 +97,24 @@ def cmd_plan():
     init_week(slots)
 
     print("This week's content plan:\n")
+    score_map: dict[int, int] = {}
     for slot in slots:
-        score = next((p.get("score", "—") for p in planned if p.get("day_index") == slots.index(slot)), "—")
+        idx   = slots.index(slot)
+        score = next((p.get("score", "—") for p in planned if p.get("day_index") == idx), "—")
+        if isinstance(score, int):
+            score_map[idx] = score
         fmt   = f"[{slot['format']}]" if slot["format"] else "[--]"
         title = slot["topic"]["title"] if slot["topic"] else "— not planned —"
         print(f"  {slot['day']:10}  {slot['date']}  {fmt:8}  score:{score}  {title}")
 
     print("\nRun 'python run.py' each weekday morning to generate and post.")
+
+    # Send full plan summary to Discord (silently no-ops if channel not configured)
+    try:
+        from discord_bot import send_weekly_plan
+        send_weekly_plan(slots, strategy=strategy or None, scores=score_map)
+    except Exception as e:
+        print(f"  [plan] Discord notification failed: {e}")
 
 
 def cmd_week():
@@ -169,35 +180,46 @@ def cmd_post(preview: bool = False, force: bool = False):
     print(f"Format: {fmt}\n")
 
     if fmt == "text":
-        print("Generating 2 post variants with Claude...\n")
-        variants = generate_text_post_variants(topic, n=2)
+        print("Generating one variant per enabled model...\n")
+        variants = generate_text_post_variants(topic)
 
-        print("VARIANT 1")
-        print("=" * 60)
-        print(variants[0])
-        print("=" * 60)
-        print("\nVARIANT 2")
-        print("=" * 60)
-        print(variants[1])
-        print("=" * 60)
-
-        if preview:
-            slot["post_text"] = variants[0]
+        if not variants:
+            print("No variants produced. Skipping.")
+            slot["status"] = "skipped"
             update_slot(slot)
-            print("\nPreview mode — not published.")
             return
 
-        choice = input("\nWhich variant to post? [1/2] (or 'n' to skip): ").strip().lower()
+        for i, v in enumerate(variants, 1):
+            print(f"VARIANT {i} — {v['display_name']}")
+            print("=" * 60)
+            print(v["text"])
+            print("=" * 60)
+            print()
+
+        if preview:
+            slot["post_text"] = variants[0]["text"]
+            slot["chosen_model"] = variants[0]["model_key"]
+            update_slot(slot)
+            print("Preview mode — not published.")
+            return
+
+        valid_choices = [str(i) for i in range(1, len(variants) + 1)]
+        prompt_choices = "/".join(valid_choices)
+        choice = input(f"\nWhich variant to post? [{prompt_choices}] (or 'n' to skip): ").strip().lower()
         if choice == "n":
             slot["status"] = "skipped"
             update_slot(slot)
             print("Skipped.")
             return
 
-        post_text = variants[1] if choice == "2" else variants[0]
+        if choice not in valid_choices:
+            choice = "1"
+        chosen = variants[int(choice) - 1]
+        post_text = chosen["text"]
         slot["post_text"] = post_text
+        slot["chosen_model"] = chosen["model_key"]
 
-        answer = input("\nPost this to LinkedIn? [Y/n]: ").strip().lower()
+        answer = input(f"\nPost {chosen['display_name']}'s version to LinkedIn? [Y/n]: ").strip().lower()
         if answer in ("", "y", "yes"):
             print("Publishing to company page...")
             result = post_to_linkedin(post_text)
@@ -214,20 +236,45 @@ def cmd_post(preview: bool = False, force: bool = False):
         print("Fetching full article content...")
         article_text = fetch_article_content(topic.get("source_url", ""))
 
-        print("Generating carousel content with AI...\n")
-        content = generate_carousel_content(topic, article_text=article_text)
+        print("Generating one carousel per enabled model...\n")
+        variants = generate_carousel_content(topic, article_text=article_text)
+
+        if not variants:
+            print("No carousel variants produced. Skipping.")
+            slot["status"] = "skipped"
+            update_slot(slot)
+            return
+
+        for i, v in enumerate(variants, 1):
+            content = v["content"]
+            print(f"VARIANT {i} — {v['display_name']}")
+            print("=" * 60)
+            print(f"HOOK    : {content.get('slide1', {}).get('headline', '')}")
+            print(f"SLIDE 2 : {content.get('slide2', {}).get('section_title', '')} — {len(content.get('slide2', {}).get('stats', []))} stats")
+            print(f"SLIDE 3 : {content.get('slide3', {}).get('section_title', '')} — {len(content.get('slide3', {}).get('impacts', []))} impacts")
+            print(f"SLIDE 4 : {content.get('slide4', {}).get('section_title', '')} — {len(content.get('slide4', {}).get('steps', []))} steps")
+            print(f"SLIDE 5 : {content.get('slide5', {}).get('takeaway', '')[:80]}...")
+            print(f"CAPTION : {len(content.get('caption', ''))} chars")
+            print("=" * 60)
+            print()
+
+        valid_choices = [str(i) for i in range(1, len(variants) + 1)]
+        prompt_choices = "/".join(valid_choices)
+        choice = input(f"\nWhich carousel to build and post? [{prompt_choices}] (or 'n' to skip): ").strip().lower()
+        if choice == "n":
+            slot["status"] = "skipped"
+            update_slot(slot)
+            print("Skipped.")
+            return
+
+        if choice not in valid_choices:
+            choice = "1"
+        chosen = variants[int(choice) - 1]
+        content = chosen["content"]
         slot["design_brief"] = content
+        slot["chosen_model"] = chosen["model_key"]
 
-        print("=" * 60)
-        print(f"HOOK    : {content.get('slide1', {}).get('headline', '')}")
-        print(f"SLIDE 2 : {content.get('slide2', {}).get('section_title', '')} — {len(content.get('slide2', {}).get('stats', []))} stats")
-        print(f"SLIDE 3 : {content.get('slide3', {}).get('section_title', '')} — {len(content.get('slide3', {}).get('impacts', []))} impacts")
-        print(f"SLIDE 4 : {content.get('slide4', {}).get('section_title', '')} — {len(content.get('slide4', {}).get('steps', []))} steps")
-        print(f"SLIDE 5 : {content.get('slide5', {}).get('takeaway', '')[:80]}...")
-        print(f"CAPTION : {len(content.get('caption', ''))} chars")
-        print("=" * 60)
-
-        print("\nBuilding 5-slide carousel PDF...")
+        print(f"\nBuilding 5-slide carousel PDF from {chosen['display_name']}'s content...")
         pdf_path, preview_path = generate_carousel_slides(content, slot["date"])
         print(f"PDF:     {pdf_path}")
         print(f"Preview: {preview_path}\n")
@@ -263,7 +310,6 @@ def cmd_auto():
 
     _timing_note()
 
-    # 1. Get today's scheduled slot
     slot = get_today_slot()
     if not slot:
         today = date.today()
@@ -281,7 +327,6 @@ def cmd_auto():
     fmt   = slot.get("format", "text")
     day   = slot["day"]
 
-    # Load this week's domain strategy
     strategy       = get_strategy()
     focus_keywords = strategy.get("focus_keywords", [])
     domain         = strategy.get("domain", "AI")
@@ -292,7 +337,6 @@ def cmd_auto():
     print(f"Format: {fmt}")
     print(f"Domain: {domain}\n")
 
-    # Deep research: find latest and most viral content on today's topic
     print("Fetching latest research for today's topic...")
     try:
         fresh = fetch_deep_topic_research(topic["title"], focus_keywords)
@@ -305,14 +349,12 @@ def cmd_auto():
     except Exception as e:
         print(f"  Deep research failed: {e}\n")
 
-    # 2. Get past performance for scoring
     past_performance = {}
     try:
         past_performance = get_performance_summary()
     except Exception:
         pass
 
-    # 2b. Get top-performing hashtags
     top_hashtags: list[str] = []
     try:
         from analytics_tracker import get_top_hashtags
@@ -320,7 +362,6 @@ def cmd_auto():
     except Exception:
         pass
 
-    # 3. Get top post URLs for Exa similar search
     top_urls = []
     try:
         from analytics_tracker import _connect
@@ -343,26 +384,40 @@ def cmd_auto():
     # ── Design post flow ──────────────────────────────────────────────────────
     if fmt == "design":
         hint = ""
-        for attempt in range(max_regenerations + 1):
-            print(f"Fetching article + generating carousel (attempt {attempt + 1})...")
-            article_text = fetch_article_content(topic.get("source_url", ""))
-            content = generate_carousel_content(
-                topic, article_text=article_text, top_hashtags=top_hashtags or None
-            )
-            if hint:
-                content["_hint"] = hint
+        article_text = fetch_article_content(topic.get("source_url", ""))
 
-            msg_id = send_design_approval_message(content, topic, day)
+        for attempt in range(max_regenerations + 1):
+            print(f"Generating one carousel per enabled model (attempt {attempt + 1})...")
+            variants = generate_carousel_content(
+                topic,
+                article_text=article_text,
+                top_hashtags=top_hashtags or None,
+            )
+
+            for i, v in enumerate(variants, 1):
+                print(f"  [{i}] {v['display_name']}: hook='{v['content'].get('slide1', {}).get('headline', '')[:60]}...'")
+
+            msg_id = send_design_approval_message(variants, topic, day)
             if not msg_id:
                 print("Discord not configured — falling back to interactive mode.")
                 cmd_post()
                 return
 
-            decision = wait_for_approval(msg_id, timeout_minutes=120)
+            decision = wait_for_approval(
+                msg_id,
+                timeout_minutes=120,
+                num_variants=len(variants),
+            )
             action = decision.get("action")
 
             if action == "post":
-                print("Building 5-slide carousel PDF...")
+                idx = decision.get("variant_index", 0)
+                if idx >= len(variants):
+                    idx = 0
+                chosen  = variants[idx]
+                content = chosen["content"]
+
+                print(f"Building 5-slide carousel PDF from {chosen['display_name']}'s content...")
                 pdf_path, _ = generate_carousel_slides(content, slot["date"])
 
                 print("Uploading carousel to LinkedIn...")
@@ -370,6 +425,7 @@ def cmd_auto():
                 slot["status"]       = "posted"
                 slot["post_urn"]     = result["urn"]
                 slot["design_brief"] = content
+                slot["chosen_model"] = chosen["model_key"]
                 update_slot(slot)
 
                 try:
@@ -379,7 +435,8 @@ def cmd_auto():
                         "topic_title":    topic["title"],
                         "day_of_week":    day,
                         "posted_at":      datetime.now().isoformat(),
-                        "variant_chosen": 1,
+                        "variant_chosen": idx + 1,
+                        "chosen_model":   chosen["model_key"],
                     })
                 except Exception as e:
                     print(f"  [auto] Analytics log failed: {e}")
@@ -393,13 +450,14 @@ def cmd_auto():
                     if post_first_comment(result["urn"], comment):
                         print("First comment with source link posted.")
 
-                send_posted_confirmation(result["url"], 1, content["caption"])
-                print(f"Live: {result['url']}")
+                send_posted_confirmation(result["url"], idx + 1, content["caption"])
+                print(f"Live: {result['url']} (model: {chosen['display_name']})")
                 return
 
             elif action == "regenerate":
                 hint = decision.get("hint", "")
-                print(f"Regenerating design brief with hint: '{hint}'...")
+                print(f"Regenerating carousels with hint: '{hint}'...")
+                topic["regen_hint"] = hint
                 if attempt >= max_regenerations:
                     print("Max regenerations reached. Skipping today.")
                     slot["status"] = "skipped"
@@ -430,15 +488,17 @@ def cmd_auto():
         hint = ""
 
         for attempt in range(max_regenerations + 1):
-            print(f"Generating post variants (attempt {attempt + 1})...")
+            print(f"Generating one post per enabled model (attempt {attempt + 1})...")
             variants = generate_text_post_variants(
-                topic, n=2, hint=hint, previous=previous_variants or None,
+                topic,
+                hint=hint,
+                previous=previous_variants or None,
                 top_hashtags=top_hashtags or None,
             )
-            scores = [engagement_scorer(v, past_performance) for v in variants]
+            scores = [engagement_scorer(v["text"], past_performance) for v in variants]
 
-            print(f"Variant 1 score: {scores[0]}/100")
-            print(f"Variant 2 score: {scores[1]}/100")
+            for v, s in zip(variants, scores):
+                print(f"  {v['display_name']}: score {s}/100")
 
             msg_id = send_approval_message(variants, scores, topic, day)
             if not msg_id:
@@ -446,17 +506,25 @@ def cmd_auto():
                 cmd_post()
                 return
 
-            decision = wait_for_approval(msg_id, timeout_minutes=120)
+            decision = wait_for_approval(
+                msg_id,
+                timeout_minutes=120,
+                num_variants=len(variants),
+            )
             action = decision.get("action")
 
             if action == "post":
-                variant_num = decision.get("variant", 1)
-                post_text = variants[variant_num - 1]
-                slot["post_text"] = post_text
+                idx = decision.get("variant_index", 0)
+                if idx >= len(variants):
+                    idx = 0
+                chosen    = variants[idx]
+                post_text = chosen["text"]
+                slot["post_text"]    = post_text
+                slot["chosen_model"] = chosen["model_key"]
 
-                print(f"Publishing variant {variant_num} to LinkedIn...")
+                print(f"Publishing {chosen['display_name']}'s version to LinkedIn...")
                 result = post_to_linkedin(post_text)
-                slot["status"] = "posted"
+                slot["status"]   = "posted"
                 slot["post_urn"] = result["urn"]
                 update_slot(slot)
 
@@ -467,7 +535,8 @@ def cmd_auto():
                         "topic_title":    topic["title"],
                         "day_of_week":    day,
                         "posted_at":      datetime.now().isoformat(),
-                        "variant_chosen": variant_num,
+                        "variant_chosen": idx + 1,
+                        "chosen_model":   chosen["model_key"],
                     })
                 except Exception as e:
                     print(f"  [auto] Analytics log failed: {e}")
@@ -481,16 +550,17 @@ def cmd_auto():
                     if post_first_comment(result["urn"], comment):
                         print("First comment with source link posted.")
 
-                send_posted_confirmation(result["url"], variant_num, post_text)
-                print(f"Live: {result['url']}")
+                send_posted_confirmation(result["url"], idx + 1, post_text)
+                print(f"Live: {result['url']} (model: {chosen['display_name']})")
                 return
 
             elif action == "edit":
                 post_text = decision["text"]
-                slot["post_text"] = post_text
+                slot["post_text"]    = post_text
+                slot["chosen_model"] = "human-edit"
                 print("Publishing custom text to LinkedIn...")
                 result = post_to_linkedin(post_text)
-                slot["status"] = "posted"
+                slot["status"]   = "posted"
                 slot["post_urn"] = result["urn"]
                 update_slot(slot)
                 try:
@@ -501,6 +571,7 @@ def cmd_auto():
                         "day_of_week":    day,
                         "posted_at":      datetime.now().isoformat(),
                         "variant_chosen": 0,
+                        "chosen_model":   "human-edit",
                     })
                 except Exception:
                     pass
@@ -510,7 +581,7 @@ def cmd_auto():
 
             elif action == "regenerate":
                 hint = decision.get("hint", "")
-                previous_variants = variants
+                previous_variants = [v["text"] for v in variants]
                 print(f"Regenerating with hint: '{hint}'...")
                 if attempt >= max_regenerations:
                     print("Max regenerations reached. Skipping today.")

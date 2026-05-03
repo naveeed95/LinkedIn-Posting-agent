@@ -1,7 +1,6 @@
 """
 Fetches trending AI topics from multiple free sources:
   - Hacker News API
-  - RSS feeds (TechCrunch, VentureBeat, The Verge, etc.)
   - Tavily semantic search (TAVILY_API_KEY)
   - Exa neural search — finds content similar to top past posts (EXA_API_KEY)
   - Supadata YouTube transcripts from top AI channels (SUPADATA_API_KEY)
@@ -13,7 +12,6 @@ All sources are merged and deduplicated before returning.
 import os
 import re
 import time
-import xml.etree.ElementTree as ET
 
 import requests
 from dotenv import load_dotenv
@@ -21,23 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 HEADERS = {"User-Agent": "TheTechTutors-PostingAgent/1.0"}
-ATOM = "http://www.w3.org/2005/Atom"
 HN_API = "https://hn.algolia.com/api/v1/search"
-
-RSS_FEEDS = [
-    ("TechCrunch AI",        "https://techcrunch.com/category/artificial-intelligence/feed/"),
-    ("VentureBeat AI",       "https://venturebeat.com/category/ai/feed/"),
-    ("The Verge AI",         "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"),
-    ("MIT Technology Review","https://www.technologyreview.com/feed/"),
-    ("Wired AI",             "https://www.wired.com/feed/tag/artificial-intelligence/latest/rss"),
-    ("Google AI Blog",       "https://blog.google/technology/ai/rss/"),
-    ("Hugging Face Blog",    "https://huggingface.co/blog/feed.xml"),
-    ("Reddit r/artificial",  "https://www.reddit.com/r/artificial/.rss"),
-    ("Reddit r/ArtificialIntelligence", "https://www.reddit.com/r/ArtificialIntelligence/.rss"),
-    ("Reddit r/MachineLearning", "https://www.reddit.com/r/MachineLearning/.rss"),
-    ("Product Hunt AI",      "https://www.producthunt.com/feed?category=artificial-intelligence"),
-    ("Ars Technica",         "https://feeds.arstechnica.com/arstechnica/technology-lab"),
-]
 
 AI_YOUTUBE_CHANNELS = [
     ("Matt Wolfe",        "UCT4KCGtNAGKB5eXqm5k5Spw"),
@@ -97,34 +79,6 @@ def fetch_hacker_news(days_back: int = 7, max_items: int = 15) -> list[dict]:
         url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
         if title:
             items.append(_make_topic(title, url, "Hacker News", points=hit.get("points", 0)))
-    return items
-
-
-def fetch_rss(name: str, url: str, max_items: int = 6) -> list[dict]:
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-    except Exception as e:
-        print(f"  [research] Failed ({name}): {e}")
-        return []
-
-    entries = list(root.iter("item")) or list(root.iter(f"{{{ATOM}}}entry"))
-    items = []
-    for entry in entries:
-        title = _strip_html(_text(entry, "title", f"{{{ATOM}}}title"))
-        link = _text(entry, "link", f"{{{ATOM}}}link").strip()
-        if not link:
-            link_el = entry.find(f"{{{ATOM}}}link")
-            if link_el is not None:
-                link = link_el.get("href", "")
-        description = _strip_html(
-            _text(entry, "description", f"{{{ATOM}}}summary", f"{{{ATOM}}}content")
-        )[:300]
-        if title and link:
-            items.append(_make_topic(title, link, name, description))
-        if len(items) >= max_items:
-            break
     return items
 
 
@@ -358,10 +312,6 @@ def fetch_trending_topics(top_post_urls: list[str] | None = None) -> list[dict]:
 
     print("  Fetching Hacker News...")
     topics.extend(fetch_hacker_news())
-
-    for name, url in RSS_FEEDS:
-        print(f"  Fetching {name}...")
-        topics.extend(fetch_rss(name, url))
 
     print("  Fetching Tavily semantic search...")
     topics.extend(fetch_tavily_topics())

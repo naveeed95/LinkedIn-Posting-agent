@@ -8,14 +8,16 @@ Required env vars:
   DISCORD_COMMENTS_CHANNEL_ID
   DISCORD_POSTED_CHANNEL_ID
   DISCORD_ANALYTICS_CHANNEL_ID
+  DISCORD_PLAN_CHANNEL_ID
 
 Exports:
-  send_approval_message(variants, scores, topic, day)       -> str | None (message_id)
-  wait_for_approval(message_id, timeout_minutes)            -> dict
+  send_approval_message(variants, scores, topic, day)         -> str | None (message_id)
+  wait_for_approval(message_id, timeout_minutes)              -> dict
   send_posted_confirmation(post_url, variant_used, post_text) -> None
   send_comment_approval(comment_author, comment_text, suggested_reply) -> None
-  send_analytics_report(report_data)                        -> None
-  send_rules_update(changes)                                -> None
+  send_analytics_report(report_data)                         -> None
+  send_rules_update(changes)                                 -> None
+  send_weekly_plan(slots, strategy, scores)                  -> None
 """
 
 import os
@@ -66,6 +68,41 @@ def _send_message(channel_id: str, content: str) -> str | None:
         return None
 
 
+def _send_long_message(channel_id: str, content: str) -> str | None:
+    """Discord caps each message at 2000 chars. Split long content across messages.
+    Returns the ID of the FIRST message (the one we'll watch for replies)."""
+    if not channel_id or not _token():
+        print(f"  [discord] Missing token or channel ID — message not sent.")
+        return None
+
+    if len(content) <= 1990:
+        return _send_message(channel_id, content)
+
+    chunks: list[str] = []
+    remaining = content
+    while remaining:
+        if len(remaining) <= 1990:
+            chunks.append(remaining)
+            break
+        # Prefer to break at a divider line if possible
+        cut = remaining.rfind("━━━", 0, 1990)
+        if cut <= 100:
+            cut = remaining.rfind("\n", 0, 1990)
+        if cut <= 100:
+            cut = 1990
+        chunks.append(remaining[:cut])
+        remaining = remaining[cut:].lstrip("\n")
+
+    first_id: str | None = None
+    for i, chunk in enumerate(chunks):
+        prefix = f"_(part {i+1}/{len(chunks)})_\n" if len(chunks) > 1 else ""
+        msg_id = _send_message(channel_id, prefix + chunk)
+        if i == 0:
+            first_id = msg_id
+        time.sleep(0.5)
+    return first_id
+
+
 def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
     try:
         resp = requests.get(
@@ -83,50 +120,80 @@ def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
 # ── Public functions ───────────────────────────────────────────────────────────
 
 def send_approval_message(
-    variants: list[str],
+    variants: list[dict],
     scores: list[int],
     topic: dict,
     day: str,
 ) -> str | None:
+    """Send an approval message showing one variant per model.
+
+    `variants` is a list of {"model_key", "display_name", "text"} dicts produced
+    by content_generator.generate_text_post_variants().
+    `scores[i]` is the engagement score for `variants[i]`.
+    """
     date_str = datetime.now().strftime("%A %d %B %Y")
-    score1 = scores[0] if scores else 0
-    score2 = scores[1] if len(scores) > 1 else 0
-    v1 = variants[0] if variants else ""
-    v2 = variants[1] if len(variants) > 1 else ""
-    divider = "━" * 40
+    divider  = "━" * 40
 
-    content = f"""📝 **THE TECH TUTORS — Daily Post** | {day} {date_str}
-**Topic:** {topic.get('title', '')}
-**Angle:** {topic.get('angle', '')}
+    if not variants:
+        _send_message(
+            _channel("DISCORD_APPROVALS_CHANNEL_ID"),
+            f"⚠️ No variants generated for {day} {date_str}. Logging as missed.",
+        )
+        return None
 
-{divider}
-**VARIANT 1** (Score: {score1}/100) — Question Hook
-{v1}
-{divider}
-**VARIANT 2** (Score: {score2}/100) — Bold Statement
-{v2}
-{divider}
+    sections: list[str] = []
+    for i, v in enumerate(variants, 1):
+        score = scores[i - 1] if i - 1 < len(scores) else 0
+        sections.append(
+            f"{divider}\n"
+            f"**[{i}] {v['display_name']}** — score {score}/100\n"
+            f"{v['text']}"
+        )
 
-Reply with:
-**1** → post variant 1
-**2** → post variant 2
-**r [hint]** → regenerate with your instruction (e.g. `r make it funnier`)
-**3 edit: [your text]** → post your own version
-**skip** → skip today (logged)"""
+    instructions = "Reply with:\n"
+    for i, v in enumerate(variants, 1):
+        instructions += f"**{i}** → post {v['display_name']}'s version\n"
+    instructions += (
+        "**r [hint]** → regenerate all variants (e.g. `r make them punchier`)\n"
+        "**edit: [your text]** → post your own custom version\n"
+        "**skip** → skip today (logged)"
+    )
+
+    header = (
+        f"📝 **THE TECH TUTORS — Daily Post** | {day} {date_str}\n"
+        f"**Topic:** {topic.get('title', '')}\n"
+        f"**Angle:** {topic.get('angle', '')}\n"
+    )
+
+    content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}\n\n" + instructions
 
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
-    msg_id = _send_message(channel_id, content[:2000])
+    msg_id = _send_long_message(channel_id, content)
     if msg_id:
-        print(f"  [discord] Approval message sent (id: {msg_id}). Waiting for reply...")
+        print(f"  [discord] Approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
     return msg_id
 
 
-def wait_for_approval(message_id: str, timeout_minutes: int = 120) -> dict:
+def wait_for_approval(
+    message_id: str,
+    timeout_minutes: int = 120,
+    num_variants: int = 4,
+) -> dict:
+    """Poll Discord for the user's reply.
+
+    Returns one of:
+      {"action": "post",       "variant_index": int}    # 0-based
+      {"action": "edit",       "text": str}
+      {"action": "regenerate", "hint": str}
+      {"action": "skip"}
+      {"action": "timeout"}
+    """
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
     if not channel_id or not message_id:
         print("  [discord] No channel/message ID — defaulting to timeout.")
         return {"action": "timeout"}
 
+    valid_picks = {str(i) for i in range(1, num_variants + 1)}
     deadline = time.time() + timeout_minutes * 60
     checks = 0
 
@@ -146,14 +213,19 @@ def wait_for_approval(message_id: str, timeout_minutes: int = 120) -> dict:
             text = msg.get("content", "").strip()
             text_lower = text.lower()
 
-            if text_lower == "1":
-                return {"action": "post", "variant": 1}
-            if text_lower == "2":
-                return {"action": "post", "variant": 2}
+            if text_lower in valid_picks:
+                return {"action": "post", "variant_index": int(text_lower) - 1}
+
             if text_lower == "skip":
                 return {"action": "skip"}
+
             if text_lower.startswith("r ") and len(text) > 2:
                 return {"action": "regenerate", "hint": text[2:].strip()}
+
+            if text_lower.startswith("edit:"):
+                custom_text = text[5:].strip()
+                if custom_text:
+                    return {"action": "edit", "text": custom_text}
             if text_lower.startswith("3 edit:"):
                 custom_text = text[7:].strip()
                 if custom_text:
@@ -164,44 +236,72 @@ def wait_for_approval(message_id: str, timeout_minutes: int = 120) -> dict:
 
 
 def send_design_approval_message(
-    report: dict,
+    variants: list[dict],
     topic: dict,
     day: str,
 ) -> str | None:
-    date_str      = datetime.now().strftime("%A %d %B %Y")
-    divider       = "━" * 40
-    headline      = report.get("headline", "")
-    summary       = report.get("executive_summary", "")[:300]
-    findings      = report.get("key_findings", [])[:3]
-    caption_full  = report.get("caption", "")
-    cap_preview   = caption_full[:400] + ("..." if len(caption_full) > 400 else "")
-    findings_text = "\n".join(f"  {i+1}. {f}" for i, f in enumerate(findings))
+    """Send a carousel approval showing each model's structured slide content.
 
-    content = f"""📄 **THE TECH TUTORS — Research PDF** | {day} {date_str}
-**Topic:** {topic.get('title', '')}
+    `variants` is a list of {"model_key", "display_name", "content"} dicts where
+    `content` has slide1..slide5 + caption. The user picks by number.
+    """
+    date_str = datetime.now().strftime("%A %d %B %Y")
+    divider  = "━" * 40
 
-{divider}
-**HEADLINE:** {headline}
+    if not variants:
+        _send_message(
+            _channel("DISCORD_APPROVALS_CHANNEL_ID"),
+            f"⚠️ No carousel variants generated for {day} {date_str}. Logging as missed.",
+        )
+        return None
 
-**SUMMARY:** {summary}
+    sections: list[str] = []
+    for i, v in enumerate(variants, 1):
+        c = v["content"]
+        headline    = c.get("slide1", {}).get("headline", "")
+        subheadline = c.get("slide1", {}).get("subheadline", "")
+        stats       = c.get("slide2", {}).get("stats", [])
+        impacts     = c.get("slide3", {}).get("impacts", [])
+        steps       = c.get("slide4", {}).get("steps", [])
+        takeaway    = c.get("slide5", {}).get("takeaway", "")
+        caption     = c.get("caption", "")
+        cap_preview = caption[:300] + ("..." if len(caption) > 300 else "")
 
-**KEY FINDINGS (top 3):**
-{findings_text}
+        stats_text   = " | ".join(f"{s.get('stat', '')}" for s in stats[:3])
+        impacts_text = " | ".join(imp.get('title', '') for imp in impacts[:3])
+        steps_text   = " | ".join(s.get('action', '') for s in steps[:3])
 
-{divider}
-**CAPTION PREVIEW:**
-{cap_preview}
-{divider}
+        sections.append(
+            f"{divider}\n"
+            f"**[{i}] {v['display_name']}**\n"
+            f"**HOOK:** {headline}\n"
+            f"_{subheadline}_\n\n"
+            f"**STATS:** {stats_text}\n"
+            f"**IMPACTS:** {impacts_text}\n"
+            f"**STEPS:** {steps_text}\n\n"
+            f"**TAKEAWAY:** {takeaway}\n\n"
+            f"**CAPTION:** {cap_preview}"
+        )
 
-Reply with:
-**1** → post this research PDF to LinkedIn
-**r [hint]** → regenerate (e.g. `r add more stats`)
-**skip** → skip today (logged)"""
+    instructions = "Reply with:\n"
+    for i, v in enumerate(variants, 1):
+        instructions += f"**{i}** → post {v['display_name']}'s carousel to LinkedIn\n"
+    instructions += (
+        "**r [hint]** → regenerate all (e.g. `r add more stats`)\n"
+        "**skip** → skip today (logged)"
+    )
+
+    header = (
+        f"📄 **THE TECH TUTORS — Carousel Post** | {day} {date_str}\n"
+        f"**Topic:** {topic.get('title', '')}\n"
+    )
+
+    content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}\n\n" + instructions
 
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
-    msg_id = _send_message(channel_id, content[:2000])
+    msg_id = _send_long_message(channel_id, content)
     if msg_id:
-        print(f"  [discord] Research PDF approval sent (id: {msg_id}). Waiting for reply...")
+        print(f"  [discord] Carousel approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
     return msg_id
 
 
@@ -249,6 +349,17 @@ def send_analytics_report(report_data: dict) -> None:
     day_lines = "\n".join(
         f"  • {d}: {s}" for d, s in report_data.get("day_scores", {}).items()
     )
+    model_wins   = report_data.get("model_wins", {})
+    model_scores = report_data.get("model_scores", {})
+    total_wins   = sum(model_wins.values()) or 1
+    win_lines = "\n".join(
+        f"  • {m}: {w} wins ({round(100 * w / total_wins)}%)"
+        for m, w in model_wins.items()
+    )
+    score_lines = "\n".join(
+        f"  • {m}: {s}" for m, s in model_scores.items()
+    )
+
     sheet_url = report_data.get("sheet_url", "")
 
     content = f"""📊 **ANALYTICS REPORT** — {timestamp}
@@ -256,13 +367,20 @@ def send_analytics_report(report_data: dict) -> None:
 **7-day avg engagement score:** {report_data.get('recent_avg_score', 0)}
 **Best hook type:** {report_data.get('best_hook_type', '—')}
 **Best posting day:** {report_data.get('best_day', '—')}
+**Best model:** {report_data.get('best_model', '—')}
 **Top post this week:** {report_data.get('top_post_topic', '—')}
 
 Hook performance:
 {hook_lines or '  No data yet'}
 
 Day performance:
-{day_lines or '  No data yet'}"""
+{day_lines or '  No data yet'}
+
+Model win rates (which model you picked):
+{win_lines or '  No data yet'}
+
+Model engagement (which model audience prefers):
+{score_lines or '  No data yet'}"""
 
     if sheet_url:
         content += f"\n\n📋 **Full report:** {sheet_url}"
@@ -285,10 +403,74 @@ Rules cache refreshed. Next post will use updated rules."""
     _send_message(channel_id, content[:2000])
 
 
+def send_weekly_plan(
+    slots: list[dict],
+    strategy: dict | None = None,
+    scores: dict[int, int] | None = None,
+) -> str | None:
+    """Send the full week's content plan to the planning channel.
+
+    Falls back to DISCORD_APPROVALS_CHANNEL_ID if DISCORD_PLAN_CHANNEL_ID is not set.
+    """
+    channel_id = _channel("DISCORD_PLAN_CHANNEL_ID") or _channel("DISCORD_APPROVALS_CHANNEL_ID")
+    if not channel_id:
+        print("  [discord] No plan or approvals channel configured — weekly plan not sent.")
+        return None
+
+    week_start = slots[0]["date"] if slots else datetime.now().strftime("%Y-%m-%d")
+    divider = "━" * 40
+    scores  = scores or {}
+
+    strategy_block = ""
+    if strategy:
+        keywords = ", ".join(strategy.get("focus_keywords", [])) or "—"
+        strategy_block = (
+            f"**🎯 Weekly Strategy**\n"
+            f"  • Domain:        {strategy.get('domain', '—')}\n"
+            f"  • Focus keywords: {keywords}\n"
+            f"  • Posting time:  {strategy.get('posting_time', '—')}\n"
+            f"  • Rationale:     {strategy.get('rationale', '—')}\n\n"
+        )
+
+    day_blocks: list[str] = []
+    for i, slot in enumerate(slots):
+        topic = slot.get("topic") or {}
+        fmt   = slot.get("format", "—")
+        title = topic.get("title", "— not planned —")
+        angle = topic.get("angle", "")
+        url   = topic.get("source_url", "")
+        score = scores.get(i, "—")
+
+        icon = "🖼️" if fmt == "design" else "📝"
+
+        block = (
+            f"{divider}\n"
+            f"{icon} **{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"
+            f"**Topic:** {title}\n"
+        )
+        if angle:
+            block += f"**Angle:** {angle}\n"
+        if url:
+            block += f"**Source:** {url}\n"
+        day_blocks.append(block)
+
+    header = (
+        f"📅 **THE TECH TUTORS — Week Plan** | {week_start}\n"
+        f"_5 posts queued for Mon–Fri. Daily approvals will fire at posting time._\n\n"
+    )
+
+    content = header + strategy_block + "\n".join(day_blocks) + f"\n{divider}\n"
+    content += "_Reply in the daily approval channel to pick a variant for each post._"
+
+    msg_id = _send_long_message(channel_id, content)
+    if msg_id:
+        print(f"  [discord] Weekly plan sent to plan channel (id: {msg_id}).")
+    return msg_id
+
+
 # ── CLI entry point (called by GitHub Actions) ─────────────────────────────────
 
 if __name__ == "__main__":
-    import json
     import sys
 
     args = sys.argv[1:]

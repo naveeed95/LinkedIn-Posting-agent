@@ -4,8 +4,19 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 
+from llm_client import (
+    MODELS,
+    QUALITY_FIX_MODEL,
+    STRATEGY_MODEL,
+    UTILITY_MODEL,
+    call_model,
+    call_with_fallback,
+    generate_variants,
+)
+
 load_dotenv()
 
+# Direct Groq client retained for the cheap quality-fix pass
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = "llama-3.3-70b-versatile"
 
@@ -105,23 +116,23 @@ DAY_STRATEGY = {
 
 DAY_FORMAT = {0: "text", 1: "design", 2: "design", 3: "design", 4: "text"}
 
-VARIANT_SEPARATOR = "---VARIANT 2---"
-
 
 def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> str:
+    """Single-shot generation for strategy and utility calls.
+
+    Routes through the multi-provider router so we use the best available free
+    model (and fall back if it's down). Variant generation does NOT go through
+    here — it uses generate_variants() to produce one output per model.
+    """
     system = BRAND_CONTEXT + "\n\n" + WRITING_SYSTEM
     if system_extra:
         system += "\n\n" + system_extra
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=max_tokens,
-        temperature=0.8,
+    return call_with_fallback(
+        model_keys = [STRATEGY_MODEL, "llama-70b", "cerebras-llama"],
+        prompt     = prompt,
+        system     = system,
+        max_tokens = max_tokens,
     )
-    return response.choices[0].message.content.strip()
 
 
 def _extract_json(text: str, opening: str) -> str:
@@ -336,11 +347,17 @@ Return ONLY a valid JSON array with exactly 5 objects (day_index 0–4):
 
 def generate_text_post_variants(
     topic: dict,
-    n: int = 2,
+    n: int = 2,                          # kept for backward compatibility, ignored
     hint: str = "",
     previous: list[str] | None = None,
     top_hashtags: list[str] | None = None,
-) -> list[str]:
+) -> list[dict]:
+    """Generate one LinkedIn post per enabled creative model.
+
+    Returns a list of dicts: [{"model_key", "display_name", "text"}, ...]
+    The number of variants depends on how many models are enabled in
+    llm_client.VARIANT_MODELS["text"] and how many succeed.
+    """
     rules_prompt = _get_rules_prompt()
 
     hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
@@ -351,53 +368,71 @@ def generate_text_post_variants(
 
     previous_block = ""
     if previous:
-        previous_block = "\nPrevious variants (generate genuinely different content — different hook, angle, examples):\n"
+        previous_block = "\nPrevious attempts (write something genuinely different — different hook, different angle, different examples):\n"
         for i, p in enumerate(previous, 1):
-            previous_block += f"--- Previous Variant {i} ---\n{p[:400]}\n"
+            previous_block += f"--- Previous {i} ---\n{p[:400]}\n"
 
     research_block = ""
     if topic.get("research_context"):
         research_block = f"\nLATEST RESEARCH FOUND TODAY (use specific facts/stats from these sources):\n{topic['research_context']}\n"
 
-    prompt = f"""Write {n} LinkedIn post variants for The Tech Tutors.
+    prompt = f"""Write ONE LinkedIn post for The Tech Tutors.
 
 TOPIC: {topic['title']}
 ANGLE: {topic['angle']}
 SOURCE URL (first comment only, NOT in post body): {topic['source_url']}
 {hint_block}{hashtag_block}{research_block}{previous_block}
-VARIANT 1: QUESTION HOOK — start with a thought-provoking question
-VARIANT 2: BOLD STATEMENT HOOK — start with a counterintuitive claim
+Write your single best version. Pick whichever hook style works best for THIS topic — question, bold statement, story, surprising fact, whatever pulls strongest. Make it sound like *you* wrote it, in your own voice.
 
 Follow all formatting and structure rules exactly.
 Every sentence on its own line. Blank line between sections.
 
-Write Variant 1 in full, then write exactly "{VARIANT_SEPARATOR}" on its own line, then Variant 2 in full.
+REMINDER: No links in post body. No standalone "The Tech Tutors" line. Hashtags last line only.
+Return ONLY the post text — no preamble, no explanations, no labels."""
 
-REMINDER: No links in post body. No standalone "The Tech Tutors" line. Hashtags last line only."""
+    system = BRAND_CONTEXT + "\n\n" + WRITING_SYSTEM
+    if rules_prompt:
+        system += "\n\n" + rules_prompt
 
-    raw = _generate(prompt, system_extra=rules_prompt, max_tokens=3000)
-    parts = [p.strip() for p in raw.split(VARIANT_SEPARATOR) if p.strip()]
-    if len(parts) < 2:
-        parts = [raw, raw]
+    variants = generate_variants(
+        job        = "text",
+        prompt     = prompt,
+        system     = system,
+        max_tokens = 2500,
+    )
 
-    return [_fix_post_quality(p) for p in parts[:n]]
+    # Quality-fix every variant
+    for v in variants:
+        try:
+            v["text"] = _fix_post_quality(v["text"])
+        except Exception as e:
+            print(f"  [content] Quality fix failed for {v['display_name']}: {e}")
+
+    return variants
 
 
 def generate_text_post(topic: dict) -> str:
-    return generate_text_post_variants(topic, n=1)[0]
+    """Backward-compat helper: returns text of the first successful variant."""
+    variants = generate_text_post_variants(topic)
+    return variants[0]["text"] if variants else ""
 
 
 def generate_carousel_content(
     topic: dict,
     article_text: str = "",
     top_hashtags: list[str] | None = None,
-) -> dict:
-    """Generate structured 5-slide carousel content. Llama reads the full article."""
+) -> list[dict]:
+    """Generate one structured 5-slide carousel per enabled creative model.
+
+    Returns a list of dicts: [{"model_key", "display_name", "content"}, ...]
+    where `content` is the parsed JSON carousel structure (slide1..slide5 + caption).
+    Models that fail to produce valid JSON are dropped with a warning.
+    """
     rules_prompt  = _get_rules_prompt()
     hashtag_block = f"\nTop-performing hashtags (use 2-3 in caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
 
     if article_text:
-        source_block = f"\nFULL ARTICLE TEXT (extract REAL numbers, facts, and quotes from this — do NOT make up statistics):\n{article_text[:2800]}\n"
+        source_block = f"\nFULL ARTICLE TEXT (extract REAL numbers, facts, and quotes from this — do NOT make up statistics):\n{article_text[:7000]}\n"
     elif topic.get("research_context"):
         source_block = f"\nRESEARCH SOURCES:\n{topic['research_context']}\n"
     else:
@@ -465,10 +500,38 @@ Return ONLY valid JSON, no markdown fences:
   "caption": "..."
 }}"""
 
-    raw    = _generate(prompt, system_extra=rules_prompt, max_tokens=2500)
-    result = json.loads(_extract_json(raw, "{"))
-    result["caption"] = _fix_post_quality(result["caption"])
-    return result
+    system = BRAND_CONTEXT + "\n\n" + WRITING_SYSTEM
+    if rules_prompt:
+        system += "\n\n" + rules_prompt
+
+    raw_variants = generate_variants(
+        job        = "carousel",
+        prompt     = prompt,
+        system     = system,
+        max_tokens = 3000,
+    )
+
+    results: list[dict] = []
+    for v in raw_variants:
+        try:
+            content = json.loads(_extract_json(v["text"], "{"))
+            try:
+                content["caption"] = _fix_post_quality(content.get("caption", ""))
+            except Exception as e:
+                print(f"  [content] Quality fix failed for {v['display_name']}: {e}")
+            results.append({
+                "model_key":    v["model_key"],
+                "display_name": v["display_name"],
+                "content":      content,
+            })
+        except Exception as e:
+            print(f"  [content] {v['display_name']} carousel JSON failed: {str(e)[:120]} — dropping")
+            continue
+
+    if not results:
+        raise RuntimeError("All carousel models failed to produce valid JSON")
+
+    return results
 
 
 def generate_research_report(
