@@ -68,6 +68,17 @@ def _init_db() -> None:
                 posted_at        TIMESTAMP,
                 engagement_score REAL DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS hashtag_metrics (
+                id        INTEGER PRIMARY KEY,
+                hashtag   TEXT NOT NULL,
+                post_id   TEXT NOT NULL,
+                likes     INTEGER DEFAULT 0,
+                comments  INTEGER DEFAULT 0,
+                shares    INTEGER DEFAULT 0,
+                polled_at TIMESTAMP,
+                UNIQUE(hashtag, post_id)
+            );
         """)
 
 
@@ -177,6 +188,23 @@ def poll_metrics(post_id: str) -> dict:
                     data["clicks"],
                 ),
             )
+
+            # Update per-hashtag engagement
+            post_row = conn.execute(
+                "SELECT hashtags FROM posts WHERE post_id = ?", (post_id,)
+            ).fetchone()
+            if post_row and post_row["hashtags"]:
+                now = datetime.now().isoformat()
+                for tag in post_row["hashtags"].split():
+                    if tag.startswith("#"):
+                        conn.execute(
+                            """INSERT INTO hashtag_metrics (hashtag, post_id, likes, comments, shares, polled_at)
+                               VALUES (?, ?, ?, ?, ?, ?)
+                               ON CONFLICT(hashtag, post_id) DO UPDATE SET
+                                 likes=excluded.likes, comments=excluded.comments,
+                                 shares=excluded.shares, polled_at=excluded.polled_at""",
+                            (tag.lower(), post_id, data["likes"], data["comments"], data["shares"], now),
+                        )
         return data
 
     except Exception as e:
@@ -252,6 +280,20 @@ def get_topic_history(days: int = 14) -> list[str]:
             (cutoff,),
         ).fetchall()
     return [r["topic"] for r in rows if r["topic"]]
+
+
+def get_top_hashtags(n: int = 10) -> list[str]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT hashtag,
+                      SUM(likes + comments * 2 + shares * 3) AS score
+               FROM hashtag_metrics
+               GROUP BY hashtag
+               ORDER BY score DESC
+               LIMIT ?""",
+            (n,),
+        ).fetchall()
+    return [r["hashtag"] for r in rows]
 
 
 # ── Google Sheets reporting ────────────────────────────────────────────────────

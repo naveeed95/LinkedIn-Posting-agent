@@ -125,10 +125,21 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
 
 
 def _extract_json(text: str, opening: str) -> str:
+    import re
     close = "]" if opening == "[" else "}"
     start = text.find(opening)
     end = text.rfind(close) + 1
-    return text[start:end]
+    raw = text[start:end]
+
+    # Escape control characters inside JSON string values
+    def _fix_string(m: re.Match) -> str:
+        s = m.group(0)
+        s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+        s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', s)
+        return s
+
+    raw = re.sub(r'"(?:[^"\\]|\\.)*"', _fix_string, raw, flags=re.DOTALL)
+    return raw
 
 
 def _fix_post_quality(raw: str) -> str:
@@ -195,6 +206,7 @@ def plan_weekly_posts(
     topics: list[dict],
     num_posts: int = 5,
     recent_titles: list[str] | None = None,
+    performance_data: dict | None = None,
 ) -> list[dict]:
     topics_text = "\n".join(
         f"{i+1}. [{t['source']}] {t['title']} — {t.get('description', '')} ({t['url']})"
@@ -208,13 +220,30 @@ def plan_weekly_posts(
             + "\n".join(f"- {t}" for t in recent_titles)
         )
 
+    perf_block = ""
+    if performance_data and performance_data.get("top_post_topic"):
+        best_hook = performance_data.get("best_hook_type", "bold")
+        best_day  = performance_data.get("best_day", "Tuesday")
+        top_topic = performance_data.get("top_post_topic", "")
+        hook_scores = performance_data.get("hook_scores", {})
+        day_scores  = performance_data.get("day_scores", {})
+        hook_lines  = ", ".join(f"{h}={s}" for h, s in hook_scores.items()) if hook_scores else "no data yet"
+        day_lines   = ", ".join(f"{d}={s}" for d, s in day_scores.items()) if day_scores else "no data yet"
+        perf_block = (
+            "\nPAST PERFORMANCE DATA — use this to pick better topics and formats:\n"
+            f"  Best hook type: {best_hook} (hook scores: {hook_lines})\n"
+            f"  Best posting day: {best_day} (day scores: {day_lines})\n"
+            f"  Top-performing topic: {top_topic}\n"
+            "  → Favour topics that suit the best hook type and best day patterns.\n"
+        )
+
     day_block = "\n".join(f"  Day {i}: {v}" for i, v in DAY_STRATEGY.items())
 
     prompt = f"""Here are trending AI topics from the past week:
 
 {topics_text}
 {avoid_block}
-
+{perf_block}
 Plan The Tech Tutors' LinkedIn content for Mon–Fri (5 posts).
 
 Day strategy:
@@ -253,10 +282,15 @@ def generate_text_post_variants(
     n: int = 2,
     hint: str = "",
     previous: list[str] | None = None,
+    top_hashtags: list[str] | None = None,
 ) -> list[str]:
     rules_prompt = _get_rules_prompt()
 
     hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
+
+    hashtag_block = ""
+    if top_hashtags:
+        hashtag_block = f"\nTop-performing hashtags from our past posts (use 2-3 of these): {' '.join(top_hashtags[:8])}\n"
 
     previous_block = ""
     if previous:
@@ -269,7 +303,7 @@ def generate_text_post_variants(
 TOPIC: {topic['title']}
 ANGLE: {topic['angle']}
 SOURCE URL (first comment only, NOT in post body): {topic['source_url']}
-{hint_block}{previous_block}
+{hint_block}{hashtag_block}{previous_block}
 VARIANT 1: QUESTION HOOK — start with a thought-provoking question
 VARIANT 2: BOLD STATEMENT HOOK — start with a counterintuitive claim
 
@@ -292,14 +326,17 @@ def generate_text_post(topic: dict) -> str:
     return generate_text_post_variants(topic, n=1)[0]
 
 
-def generate_design_brief(topic: dict) -> dict:
+def generate_design_brief(topic: dict, hint: str = "", top_hashtags: list[str] | None = None) -> dict:
     rules_prompt = _get_rules_prompt()
+    hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
+    hashtag_block = f"\nTop-performing hashtags from our past posts (use 2-3 in the caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
 
     prompt = f"""Create a design brief + LinkedIn caption for The Tech Tutors:
 
 Title: {topic['title']}
 Angle: {topic['angle']}
 Source: {topic['source_url']}
+{hint_block}{hashtag_block}
 
 Pick the best visual template:
 - "list": bulleted tips or features
@@ -309,10 +346,12 @@ Pick the best visual template:
 
 Return ONLY valid JSON:
 {{
-  "graphic_title": "bold headline max 8 words",
+  "graphic_title": "ALL CAPS bold hook headline — max 8 words, high impact",
+  "hook_subtext": "one amplifying line max 10 words — shown below the headline",
   "template": "list|steps|comparison|stat",
   "graphic_layout": "one-line layout description",
-  "graphic_points": ["point 1", "point 2", "point 3", "point 4", "point 5"],
+  "graphic_points": ["5-7 specific points — each under 15 words, include numbers and business outcomes, format as 'Headline — specific detail with number'"],
+  "cta_text": "Save this post and follow The Tech Tutors for weekly AI tips that grow your business.",
   "brand_note": "dark navy background, white text, electric blue accents",
   "caption": "LinkedIn caption — 1200-1800 chars, no link in body, blank lines between sections, ends with specific question + 3-5 hashtags"
 }}"""

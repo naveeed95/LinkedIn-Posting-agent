@@ -19,8 +19,8 @@ from content_generator import (
     generate_text_post_variants,
     plan_weekly_posts,
 )
-from designer import generate_graphic
-from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_image
+from designer import generate_graphic, generate_slide_deck
+from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_document, post_to_linkedin_with_image
 from research import fetch_trending_topics
 from scheduler import (
     build_week_slots,
@@ -49,8 +49,17 @@ def cmd_plan():
     if recent:
         print(f"Avoiding {len(recent)} recently covered themes.\n")
 
+    performance_data = None
+    try:
+        from analytics_tracker import get_performance_summary
+        performance_data = get_performance_summary()
+        if performance_data.get("top_post_topic"):
+            print(f"Using past performance data (best hook: {performance_data['best_hook_type']}, best day: {performance_data['best_day']}).\n")
+    except Exception:
+        pass
+
     print(f"Found {len(topics)} topics. Asking Claude to score and pick the best 5...\n")
-    planned = plan_weekly_posts(topics, recent_titles=recent)
+    planned = plan_weekly_posts(topics, recent_titles=recent, performance_data=performance_data)
 
     slots = build_week_slots()
     for p in planned:
@@ -195,19 +204,20 @@ def cmd_post(preview: bool = False, force: bool = False):
         print(brief["caption"])
         print("=" * 60)
 
-        print("\nGenerating graphic with Pillow...")
-        image_path = generate_graphic(brief, slot["date"])
-        print(f"Graphic saved: {image_path}\n")
+        print("\nGenerating PDF carousel with Pillow...")
+        pdf_path, preview_path = generate_slide_deck(brief, slot["date"])
+        print(f"PDF:     {pdf_path}")
+        print(f"Preview: {preview_path}\n")
 
         if preview:
             update_slot(slot)
             print("Preview mode — not published.")
             return
 
-        answer = input("Post this graphic + caption to LinkedIn? [Y/n]: ").strip().lower()
+        answer = input("Post this carousel to LinkedIn? [Y/n]: ").strip().lower()
         if answer in ("", "y", "yes"):
-            print("Uploading image and publishing...")
-            result = post_to_linkedin_with_image(brief["caption"], image_path)
+            print("Uploading PDF carousel and publishing...")
+            result = post_to_linkedin_with_document(brief["caption"], pdf_path)
             slot["status"]   = "posted"
             slot["post_urn"] = result["urn"]
             update_slot(slot)
@@ -223,6 +233,7 @@ def cmd_auto():
     from analytics_tracker import get_performance_summary, get_topic_history, log_post
     from discord_bot import (
         send_approval_message,
+        send_design_approval_message,
         send_posted_confirmation,
         wait_for_approval,
     )
@@ -244,16 +255,26 @@ def cmd_auto():
         return
 
     topic = slot["topic"]
-    day = slot["day"]
+    fmt   = slot.get("format", "text")
+    day   = slot["day"]
 
-    print(f"\nDay:   {day} {slot['date']}")
-    print(f"Topic: {topic['title']}")
-    print(f"Angle: {topic['angle']}\n")
+    print(f"\nDay:    {day} {slot['date']}")
+    print(f"Topic:  {topic['title']}")
+    print(f"Angle:  {topic['angle']}")
+    print(f"Format: {fmt}\n")
 
     # 2. Get past performance for scoring
     past_performance = {}
     try:
         past_performance = get_performance_summary()
+    except Exception:
+        pass
+
+    # 2b. Get top-performing hashtags
+    top_hashtags: list[str] = []
+    try:
+        from analytics_tracker import get_top_hashtags
+        top_hashtags = get_top_hashtags(n=10)
     except Exception:
         pass
 
@@ -275,120 +296,198 @@ def cmd_auto():
     except Exception:
         pass
 
-    # 4. Generate 2 variants with regeneration loop
-    previous_variants: list[str] = []
-    hint = ""
     max_regenerations = 3
 
-    for attempt in range(max_regenerations + 1):
-        print(f"Generating post variants (attempt {attempt + 1})...")
-        variants = generate_text_post_variants(
-            topic, n=2, hint=hint, previous=previous_variants or None
-        )
-        scores = [engagement_scorer(v, past_performance) for v in variants]
+    # ── Design post flow ──────────────────────────────────────────────────────
+    if fmt == "design":
+        hint = ""
+        for attempt in range(max_regenerations + 1):
+            print(f"Generating design brief (attempt {attempt + 1})...")
+            brief = generate_design_brief(topic, hint=hint, top_hashtags=top_hashtags or None)
 
-        print(f"Variant 1 score: {scores[0]}/100")
-        print(f"Variant 2 score: {scores[1]}/100")
+            msg_id = send_design_approval_message(brief, topic, day)
+            if not msg_id:
+                print("Discord not configured — falling back to interactive mode.")
+                cmd_post()
+                return
 
-        # 5. Send to Discord for approval
-        msg_id = send_approval_message(variants, scores, topic, day)
-        if not msg_id:
-            print("Discord not configured — falling back to interactive mode.")
-            cmd_post()
-            return
+            decision = wait_for_approval(msg_id, timeout_minutes=120)
+            action = decision.get("action")
 
-        # 6. Wait for human decision
-        decision = wait_for_approval(msg_id, timeout_minutes=120)
-        action = decision.get("action")
+            if action == "post":
+                print("Generating PDF carousel...")
+                pdf_path, _ = generate_slide_deck(brief, slot["date"])
 
-        if action == "post":
-            variant_num = decision.get("variant", 1)
-            post_text = variants[variant_num - 1]
-            slot["post_text"] = post_text
+                print("Uploading PDF carousel to LinkedIn...")
+                result = post_to_linkedin_with_document(brief["caption"], pdf_path)
+                slot["status"]       = "posted"
+                slot["post_urn"]     = result["urn"]
+                slot["design_brief"] = brief
+                update_slot(slot)
 
-            print(f"Publishing variant {variant_num} to LinkedIn...")
-            result = post_to_linkedin(post_text)
-            slot["status"] = "posted"
-            slot["post_urn"] = result["urn"]
-            update_slot(slot)
+                try:
+                    log_post({
+                        "post_urn":       result["urn"],
+                        "post_text":      brief["caption"],
+                        "topic_title":    topic["title"],
+                        "day_of_week":    day,
+                        "posted_at":      datetime.now().isoformat(),
+                        "variant_chosen": 1,
+                    })
+                except Exception as e:
+                    print(f"  [auto] Analytics log failed: {e}")
 
-            # Log to analytics DB
-            try:
-                log_post({
-                    "post_urn": result["urn"],
-                    "post_text": post_text,
-                    "topic_title": topic["title"],
-                    "day_of_week": day,
-                    "posted_at": datetime.now().isoformat(),
-                    "variant_chosen": variant_num,
-                })
-            except Exception as e:
-                print(f"  [auto] Analytics log failed: {e}")
+                source_url = topic.get("source_url", "")
+                landing = os.environ.get("LANDING_PAGE_URL", "")
+                if source_url:
+                    comment = f"Source: {source_url}"
+                    if landing:
+                        comment += f"\n\nLearn more: {landing}"
+                    if post_first_comment(result["urn"], comment):
+                        print("First comment with source link posted.")
 
-            # Post source URL as first comment
-            source_url = topic.get("source_url", "")
-            landing = os.environ.get("LANDING_PAGE_URL", "")
-            if source_url:
-                from linkedin_poster import post_first_comment
-                comment = f"Source: {source_url}"
-                if landing:
-                    comment += f"\n\nLearn more: {landing}"
-                if post_first_comment(result["urn"], comment):
-                    print("First comment with source link posted.")
+                send_posted_confirmation(result["url"], 1, brief["caption"])
+                print(f"Live: {result['url']}")
+                return
 
-            send_posted_confirmation(result["url"], variant_num, post_text)
-            print(f"Live: {result['url']}")
-            return
+            elif action == "regenerate":
+                hint = decision.get("hint", "")
+                print(f"Regenerating design brief with hint: '{hint}'...")
+                if attempt >= max_regenerations:
+                    print("Max regenerations reached. Skipping today.")
+                    slot["status"] = "skipped"
+                    update_slot(slot)
+                    return
+                continue
 
-        elif action == "edit":
-            post_text = decision["text"]
-            slot["post_text"] = post_text
-            print("Publishing custom text to LinkedIn...")
-            result = post_to_linkedin(post_text)
-            slot["status"] = "posted"
-            slot["post_urn"] = result["urn"]
-            update_slot(slot)
-            try:
-                log_post({
-                    "post_urn": result["urn"],
-                    "post_text": post_text,
-                    "topic_title": topic["title"],
-                    "day_of_week": day,
-                    "posted_at": datetime.now().isoformat(),
-                    "variant_chosen": 0,
-                })
-            except Exception:
-                pass
-            send_posted_confirmation(result["url"], 0, post_text)
-            print(f"Live: {result['url']}")
-            return
-
-        elif action == "regenerate":
-            hint = decision.get("hint", "")
-            previous_variants = variants
-            print(f"Regenerating with hint: '{hint}'...")
-            if attempt >= max_regenerations:
-                print("Max regenerations reached. Skipping today.")
+            elif action == "skip":
                 slot["status"] = "skipped"
                 update_slot(slot)
-            continue
+                print("Skipped. Logged in schedule.")
+                return
 
-        elif action == "skip":
-            slot["status"] = "skipped"
-            update_slot(slot)
-            print("Skipped. Logged in schedule.")
-            return
+            else:  # timeout
+                slot["status"] = "skipped"
+                update_slot(slot)
+                print("No response within timeout. Logged as missed.")
+                from discord_bot import _send_message, _channel
+                _send_message(
+                    _channel("DISCORD_APPROVALS_CHANNEL_ID"),
+                    f"⚠️ **No approval received** for today's design post ({day} {slot['date']}). Logged as missed."
+                )
+                return
 
-        else:  # timeout
-            slot["status"] = "skipped"
-            update_slot(slot)
-            print("No response within timeout. Logged as missed.")
-            from discord_bot import _send_message, _channel
-            _send_message(
-                _channel("DISCORD_APPROVALS_CHANNEL_ID"),
-                f"⚠️ **No approval received** for today's post ({day} {slot['date']}). Logged as missed."
+    # ── Text post flow ────────────────────────────────────────────────────────
+    else:
+        previous_variants: list[str] = []
+        hint = ""
+
+        for attempt in range(max_regenerations + 1):
+            print(f"Generating post variants (attempt {attempt + 1})...")
+            variants = generate_text_post_variants(
+                topic, n=2, hint=hint, previous=previous_variants or None,
+                top_hashtags=top_hashtags or None,
             )
-            return
+            scores = [engagement_scorer(v, past_performance) for v in variants]
+
+            print(f"Variant 1 score: {scores[0]}/100")
+            print(f"Variant 2 score: {scores[1]}/100")
+
+            msg_id = send_approval_message(variants, scores, topic, day)
+            if not msg_id:
+                print("Discord not configured — falling back to interactive mode.")
+                cmd_post()
+                return
+
+            decision = wait_for_approval(msg_id, timeout_minutes=120)
+            action = decision.get("action")
+
+            if action == "post":
+                variant_num = decision.get("variant", 1)
+                post_text = variants[variant_num - 1]
+                slot["post_text"] = post_text
+
+                print(f"Publishing variant {variant_num} to LinkedIn...")
+                result = post_to_linkedin(post_text)
+                slot["status"] = "posted"
+                slot["post_urn"] = result["urn"]
+                update_slot(slot)
+
+                try:
+                    log_post({
+                        "post_urn":       result["urn"],
+                        "post_text":      post_text,
+                        "topic_title":    topic["title"],
+                        "day_of_week":    day,
+                        "posted_at":      datetime.now().isoformat(),
+                        "variant_chosen": variant_num,
+                    })
+                except Exception as e:
+                    print(f"  [auto] Analytics log failed: {e}")
+
+                source_url = topic.get("source_url", "")
+                landing = os.environ.get("LANDING_PAGE_URL", "")
+                if source_url:
+                    comment = f"Source: {source_url}"
+                    if landing:
+                        comment += f"\n\nLearn more: {landing}"
+                    if post_first_comment(result["urn"], comment):
+                        print("First comment with source link posted.")
+
+                send_posted_confirmation(result["url"], variant_num, post_text)
+                print(f"Live: {result['url']}")
+                return
+
+            elif action == "edit":
+                post_text = decision["text"]
+                slot["post_text"] = post_text
+                print("Publishing custom text to LinkedIn...")
+                result = post_to_linkedin(post_text)
+                slot["status"] = "posted"
+                slot["post_urn"] = result["urn"]
+                update_slot(slot)
+                try:
+                    log_post({
+                        "post_urn":       result["urn"],
+                        "post_text":      post_text,
+                        "topic_title":    topic["title"],
+                        "day_of_week":    day,
+                        "posted_at":      datetime.now().isoformat(),
+                        "variant_chosen": 0,
+                    })
+                except Exception:
+                    pass
+                send_posted_confirmation(result["url"], 0, post_text)
+                print(f"Live: {result['url']}")
+                return
+
+            elif action == "regenerate":
+                hint = decision.get("hint", "")
+                previous_variants = variants
+                print(f"Regenerating with hint: '{hint}'...")
+                if attempt >= max_regenerations:
+                    print("Max regenerations reached. Skipping today.")
+                    slot["status"] = "skipped"
+                    update_slot(slot)
+                    return
+                continue
+
+            elif action == "skip":
+                slot["status"] = "skipped"
+                update_slot(slot)
+                print("Skipped. Logged in schedule.")
+                return
+
+            else:  # timeout
+                slot["status"] = "skipped"
+                update_slot(slot)
+                print("No response within timeout. Logged as missed.")
+                from discord_bot import _send_message, _channel
+                _send_message(
+                    _channel("DISCORD_APPROVALS_CHANNEL_ID"),
+                    f"⚠️ **No approval received** for today's post ({day} {slot['date']}). Logged as missed."
+                )
+                return
 
 
 def main():

@@ -64,7 +64,7 @@ def get_auth_code():
     return auth_code_holder.get("code")
 
 
-def exchange_code_for_token(code: str) -> str:
+def exchange_code_for_token(code: str) -> tuple[str, str]:
     resp = requests.post(
         "https://www.linkedin.com/oauth/v2/accessToken",
         data={
@@ -77,7 +77,8 @@ def exchange_code_for_token(code: str) -> str:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     resp.raise_for_status()
-    return resp.json()["access_token"]
+    data = resp.json()
+    return data["access_token"], data.get("refresh_token", "")
 
 
 def get_person_urn(access_token: str) -> str:
@@ -127,7 +128,7 @@ def main():
         return
 
     print("Exchanging code for access token...")
-    token = exchange_code_for_token(code)
+    token, refresh_token = exchange_code_for_token(code)
 
     print("Fetching your LinkedIn profile URN...")
     person_urn = get_person_urn(token)
@@ -137,17 +138,23 @@ def main():
 
     set_key(ENV_FILE, "LINKEDIN_ACCESS_TOKEN", token)
     set_key(ENV_FILE, "LINKEDIN_PERSON_URN", person_urn)
+    if refresh_token:
+        set_key(ENV_FILE, "LINKEDIN_REFRESH_TOKEN", refresh_token)
 
     if org_urn:
         set_key(ENV_FILE, "LINKEDIN_ORG_URN", org_urn)
 
     print(f"\nSuccess! Saved to .env:")
-    print(f"  LINKEDIN_PERSON_URN = {person_urn}")
+    print(f"  LINKEDIN_PERSON_URN   = {person_urn}")
     if org_urn:
-        print(f"  LINKEDIN_ORG_URN    = {org_urn}")
+        print(f"  LINKEDIN_ORG_URN      = {org_urn}")
     else:
-        print("  LINKEDIN_ORG_URN    = not found — add manually to .env")
+        print("  LINKEDIN_ORG_URN      = not found — add manually to .env")
     print(f"  LINKEDIN_ACCESS_TOKEN = [hidden]")
+    if refresh_token:
+        print(f"  LINKEDIN_REFRESH_TOKEN = [hidden] — used for auto-refresh")
+    else:
+        print("  LINKEDIN_REFRESH_TOKEN = not returned by LinkedIn (token refresh unavailable)")
     print("\nYou can now run: python run.py")
 
 

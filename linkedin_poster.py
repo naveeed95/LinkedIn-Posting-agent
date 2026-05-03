@@ -110,6 +110,52 @@ def post_to_linkedin_with_image(text: str, image_path: str) -> dict:
     return _parse_result(resp)
 
 
+def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
+    token = os.environ["LINKEDIN_ACCESS_TOKEN"]
+    person_urn = _author_urn()
+
+    payload = {
+        "registerUploadRequest": {
+            "recipes": ["urn:li:digitalmediaRecipe:feedshare-document"],
+            "owner": person_urn,
+            "serviceRelationships": [
+                {"relationshipType": "OWNER", "identifier": "urn:li:userGeneratedContent"}
+            ],
+        }
+    }
+    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token))
+    resp.raise_for_status()
+    data = resp.json()["value"]
+    upload_url = data["uploadMechanism"][
+        "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+    ]["uploadUrl"]
+    asset_urn = data["asset"]
+
+    with open(pdf_path, "rb") as f:
+        resp = requests.put(
+            upload_url,
+            data=f,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/pdf"},
+        )
+    resp.raise_for_status()
+
+    payload = {
+        "author": person_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": text},
+                "shareMediaCategory": "DOCUMENT",
+                "media": [{"status": "READY", "media": asset_urn, "title": {"text": ""}}],
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }
+    resp = requests.post(UGC_URL, json=payload, headers=_headers(token))
+    resp.raise_for_status()
+    return _parse_result(resp)
+
+
 def post_first_comment(post_urn: str, comment_text: str) -> bool:
     token = os.environ["LINKEDIN_ACCESS_TOKEN"]
     actor = _author_urn()

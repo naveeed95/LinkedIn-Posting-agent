@@ -163,6 +163,49 @@ def wait_for_approval(message_id: str, timeout_minutes: int = 120) -> dict:
     return {"action": "timeout"}
 
 
+def send_design_approval_message(
+    brief: dict,
+    topic: dict,
+    day: str,
+) -> str | None:
+    date_str    = datetime.now().strftime("%A %d %B %Y")
+    template    = brief.get("template", "list").upper()
+    title       = brief.get("graphic_title", "")
+    hook        = brief.get("hook_subtext", "")
+    points      = brief.get("graphic_points", [])
+    caption     = brief.get("caption", "")
+    divider     = "━" * 40
+    points_text = "\n".join(f"  {i+1}. {p}" for i, p in enumerate(points[:7]))
+    cap_preview = caption[:400] + "..." if len(caption) > 400 else caption
+
+    content = f"""🎨 **THE TECH TUTORS — Design Post** | {day} {date_str}
+**Topic:** {topic.get('title', '')}
+**Template:** {template}
+
+{divider}
+**GRAPHIC TITLE:** {title}
+**Subtext:** {hook}
+
+**Points:**
+{points_text}
+
+{divider}
+**CAPTION PREVIEW:**
+{cap_preview}
+{divider}
+
+Reply with:
+**1** → post this carousel
+**r [hint]** → regenerate (e.g. `r make the title punchier`)
+**skip** → skip today (logged)"""
+
+    channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
+    msg_id = _send_message(channel_id, content[:2000])
+    if msg_id:
+        print(f"  [discord] Design approval sent (id: {msg_id}). Waiting for reply...")
+    return msg_id
+
+
 def send_posted_confirmation(post_url: str, variant_used: int, post_text: str) -> None:
     channel_id = _channel("DISCORD_POSTED_CHANNEL_ID")
     preview = post_text[:200] + "..." if len(post_text) > 200 else post_text
