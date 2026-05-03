@@ -319,7 +319,7 @@ def generate_slide_deck(brief: dict, date_str: str) -> tuple[str, str]:
     slides[0].save(pdf_path, save_all=True, append_images=slides[1:])
     slides[0].save(preview_path, "PNG")
 
-    print(f"  [designer] {len(slides)} slides → {pdf_path}")
+    print(f"  [designer] {len(slides)} slides -> {pdf_path}")
     return pdf_path, preview_path
 
 
