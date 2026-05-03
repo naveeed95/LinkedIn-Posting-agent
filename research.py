@@ -256,6 +256,70 @@ def fetch_google_trends() -> list[dict]:
     return items
 
 
+# ── Deep targeted daily research ───────────────────────────────────────────────
+
+def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> list[dict]:
+    """Targeted research on today's specific topic — finds latest and most viral content."""
+    items: list[dict] = []
+
+    # Targeted Tavily search
+    api_key = os.environ.get("TAVILY_API_KEY", "")
+    if api_key:
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=api_key)
+            queries = [f"{topic_title} 2026 latest news"] + [
+                f"{kw} latest" for kw in focus_keywords[:2]
+            ]
+            for query in queries[:3]:
+                try:
+                    results = client.search(query, max_results=5, search_depth="advanced")
+                    for r in results.get("results", []):
+                        title = r.get("title", "").strip()
+                        url   = r.get("url", "")
+                        if title and url:
+                            items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:400]))
+                except Exception as e:
+                    print(f"  [research] Deep Tavily query failed: {e}")
+        except ImportError:
+            pass
+
+    # Targeted HN search — last 7 days, ranked by points
+    keywords = " ".join(focus_keywords[:3]) if focus_keywords else topic_title
+    try:
+        resp = requests.get(
+            HN_API,
+            params={
+                "query": keywords,
+                "tags": "story",
+                "hitsPerPage": 10,
+                "numericFilters": f"created_at_i>{int(time.time()) - 7 * 86400}",
+            },
+            headers=HEADERS,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        for hit in resp.json().get("hits", []):
+            title = hit.get("title", "").strip()
+            url   = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
+            if title:
+                items.append(_make_topic(title, url, "Hacker News", points=hit.get("points", 0)))
+    except Exception as e:
+        print(f"  [research] Deep HN search failed: {e}")
+
+    # Deduplicate and sort by virality
+    seen:   set[str]   = set()
+    unique: list[dict] = []
+    for t in sorted(items, key=lambda x: x.get("points", 0), reverse=True):
+        key = t["title"].lower()[:50]
+        if key not in seen:
+            seen.add(key)
+            unique.append(t)
+
+    print(f"  [research] Deep research: {len(unique)} sources found for '{topic_title}'")
+    return unique[:8]
+
+
 # ── Public entry point ─────────────────────────────────────────────────────────
 
 def fetch_trending_topics(top_post_urls: list[str] | None = None) -> list[dict]:

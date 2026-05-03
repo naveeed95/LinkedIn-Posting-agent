@@ -76,6 +76,17 @@ def get_week_overview() -> list[dict]:
     return schedule.get(_week_start().isoformat(), [])
 
 
+def save_strategy(strategy: dict) -> None:
+    schedule = load_schedule()
+    schedule[f"{_week_start().isoformat()}_strategy"] = strategy
+    save_schedule(schedule)
+
+
+def get_strategy() -> dict:
+    schedule = load_schedule()
+    return schedule.get(f"{_week_start().isoformat()}_strategy", {})
+
+
 def get_recent_topics(weeks_back: int = 2) -> list[str]:
     schedule = load_schedule()
     cutoff = _week_start() - timedelta(weeks=weeks_back)

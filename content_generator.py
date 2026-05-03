@@ -202,6 +202,61 @@ def engagement_scorer(variant: str, past_performance: dict) -> int:
     return max(0, min(100, score))
 
 
+def choose_weekly_strategy(
+    performance_data: dict | None = None,
+    recent_titles: list[str] | None = None,
+) -> dict:
+    from datetime import date as _date
+
+    perf_block = ""
+    if performance_data and performance_data.get("top_post_topic"):
+        perf_block = (
+            "\nPAST PERFORMANCE:\n"
+            f"  Best hook: {performance_data.get('best_hook_type', 'bold')}\n"
+            f"  Best day:  {performance_data.get('best_day', 'Tuesday')}\n"
+            f"  Top post:  {performance_data.get('top_post_topic', '—')}\n"
+        )
+
+    avoid_block = ""
+    if recent_titles:
+        avoid_block = "\nRECENTLY COVERED (avoid repeating):\n" + "\n".join(
+            f"- {t}" for t in recent_titles[:10]
+        )
+
+    prompt = f"""You are The Tech Tutors' content strategist. Choose this week's LinkedIn content strategy.
+
+The Tech Tutors builds custom AI tools and automations for small and medium businesses.
+Target audience: business owners 30-55, pressed for time, skeptical of hype.
+Today: {_date.today().isoformat()}
+{perf_block}{avoid_block}
+
+Pick the single AI subdomain to own this week — most timely and relevant for SMB owners right now:
+- AI Agents & Autonomous Workflows
+- AI Tools for Small Business
+- LLM Cost & Efficiency
+- AI Automation (no-code / low-code)
+- Generative AI for Marketing & Content
+- AI in Customer Service
+- Machine Learning for Business Analytics
+- AI Security & Risk Management
+- AI for HR & Recruitment
+- Other (specify the domain)
+
+Also pick the best LinkedIn posting time (7am, 8am, 9am, or 10am PKT).
+Tue-Thu 8-10am typically peaks for B2B audiences.
+
+Return ONLY valid JSON:
+{{
+  "domain": "AI Agents & Autonomous Workflows",
+  "focus_keywords": ["AI agents 2026", "autonomous AI SMB", "agentic workflow automation"],
+  "posting_time": "8am PKT",
+  "rationale": "One sentence explaining why this domain and time this week."
+}}"""
+
+    raw = _generate(prompt, max_tokens=400)
+    return json.loads(_extract_json(raw, "{"))
+
+
 def plan_weekly_posts(
     topics: list[dict],
     num_posts: int = 5,
@@ -298,12 +353,16 @@ def generate_text_post_variants(
         for i, p in enumerate(previous, 1):
             previous_block += f"--- Previous Variant {i} ---\n{p[:400]}\n"
 
+    research_block = ""
+    if topic.get("research_context"):
+        research_block = f"\nLATEST RESEARCH FOUND TODAY (use specific facts/stats from these sources):\n{topic['research_context']}\n"
+
     prompt = f"""Write {n} LinkedIn post variants for The Tech Tutors.
 
 TOPIC: {topic['title']}
 ANGLE: {topic['angle']}
 SOURCE URL (first comment only, NOT in post body): {topic['source_url']}
-{hint_block}{hashtag_block}{previous_block}
+{hint_block}{hashtag_block}{research_block}{previous_block}
 VARIANT 1: QUESTION HOOK — start with a thought-provoking question
 VARIANT 2: BOLD STATEMENT HOOK — start with a counterintuitive claim
 
@@ -331,12 +390,16 @@ def generate_design_brief(topic: dict, hint: str = "", top_hashtags: list[str] |
     hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
     hashtag_block = f"\nTop-performing hashtags from our past posts (use 2-3 in the caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
 
+    research_block = ""
+    if topic.get("research_context"):
+        research_block = f"\nLATEST RESEARCH FOUND TODAY (use specific facts/stats from these):\n{topic['research_context']}\n"
+
     prompt = f"""Create a design brief + LinkedIn caption for The Tech Tutors:
 
 Title: {topic['title']}
 Angle: {topic['angle']}
 Source: {topic['source_url']}
-{hint_block}{hashtag_block}
+{hint_block}{hashtag_block}{research_block}
 
 Pick the best visual template:
 - "list": bulleted tips or features

@@ -14,6 +14,7 @@ import sys
 from datetime import date, datetime
 
 from content_generator import (
+    choose_weekly_strategy,
     engagement_scorer,
     generate_design_brief,
     generate_text_post_variants,
@@ -21,13 +22,15 @@ from content_generator import (
 )
 from designer import generate_graphic, generate_slide_deck
 from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_document, post_to_linkedin_with_image
-from research import fetch_trending_topics
+from research import fetch_deep_topic_research, fetch_trending_topics
 from scheduler import (
     build_week_slots,
     get_recent_topics,
+    get_strategy,
     get_today_slot,
     get_week_overview,
     init_week,
+    save_strategy,
     update_slot,
 )
 
@@ -39,26 +42,45 @@ def _timing_note():
 
 
 def cmd_plan():
+    recent = get_recent_topics(weeks_back=2)
+
+    performance_data = None
+    try:
+        from analytics_tracker import get_performance_summary
+        performance_data = get_performance_summary()
+    except Exception:
+        pass
+
+    # Step 1: AI chooses domain + posting strategy for the week
+    print("AI choosing this week's content domain and posting strategy...")
+    try:
+        strategy = choose_weekly_strategy(performance_data=performance_data, recent_titles=recent)
+        save_strategy(strategy)
+        print(f"\n{'='*60}")
+        print(f"WEEKLY STRATEGY")
+        print(f"  Domain:       {strategy['domain']}")
+        print(f"  Keywords:     {', '.join(strategy.get('focus_keywords', []))}")
+        print(f"  Posting time: {strategy['posting_time']}")
+        print(f"  Rationale:    {strategy['rationale']}")
+        print(f"{'='*60}\n")
+    except Exception as e:
+        print(f"  Strategy selection failed: {e}. Continuing with general topics.\n")
+        strategy = {}
+
+    if recent:
+        print(f"Avoiding {len(recent)} recently covered themes.\n")
+
+    if performance_data and performance_data.get("top_post_topic"):
+        print(f"Using past performance data (best hook: {performance_data['best_hook_type']}, best day: {performance_data['best_day']}).\n")
+
+    # Step 2: Fetch trending topics and plan the week
     print("Fetching trending AI topics from the web...")
     topics = fetch_trending_topics()
     if not topics:
         print("ERROR: No topics fetched. Check your internet connection.")
         return
 
-    recent = get_recent_topics(weeks_back=2)
-    if recent:
-        print(f"Avoiding {len(recent)} recently covered themes.\n")
-
-    performance_data = None
-    try:
-        from analytics_tracker import get_performance_summary
-        performance_data = get_performance_summary()
-        if performance_data.get("top_post_topic"):
-            print(f"Using past performance data (best hook: {performance_data['best_hook_type']}, best day: {performance_data['best_day']}).\n")
-    except Exception:
-        pass
-
-    print(f"Found {len(topics)} topics. Asking Claude to score and pick the best 5...\n")
+    print(f"Found {len(topics)} topics. Asking AI to score and pick the best 5...\n")
     planned = plan_weekly_posts(topics, recent_titles=recent, performance_data=performance_data)
 
     slots = build_week_slots()
@@ -258,10 +280,29 @@ def cmd_auto():
     fmt   = slot.get("format", "text")
     day   = slot["day"]
 
+    # Load this week's domain strategy
+    strategy       = get_strategy()
+    focus_keywords = strategy.get("focus_keywords", [])
+    domain         = strategy.get("domain", "AI")
+
     print(f"\nDay:    {day} {slot['date']}")
     print(f"Topic:  {topic['title']}")
     print(f"Angle:  {topic['angle']}")
-    print(f"Format: {fmt}\n")
+    print(f"Format: {fmt}")
+    print(f"Domain: {domain}\n")
+
+    # Deep research: find latest and most viral content on today's topic
+    print("Fetching latest research for today's topic...")
+    try:
+        fresh = fetch_deep_topic_research(topic["title"], focus_keywords)
+        if fresh:
+            topic["research_context"] = "\n".join(
+                f"- [{r['source']}] {r['title']}: {r.get('description', '')}"
+                for r in fresh[:5]
+            )
+            print(f"  Found {len(fresh)} fresh sources.\n")
+    except Exception as e:
+        print(f"  Deep research failed: {e}\n")
 
     # 2. Get past performance for scoring
     past_performance = {}
