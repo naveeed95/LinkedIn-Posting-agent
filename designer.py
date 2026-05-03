@@ -327,3 +327,128 @@ def generate_graphic(brief: dict, date_str: str) -> str:
     """Backward-compatible wrapper — returns preview PNG path."""
     _, preview = generate_slide_deck(brief, date_str)
     return preview
+
+
+def generate_research_pdf(report: dict, date_str: str, source_url: str = "") -> str:
+    """Generate a branded 2-3 page research PDF. Returns PDF path."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.colors import HexColor, white
+    from reportlab.lib.units import cm
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer,
+        HRFlowable, Table, TableStyle,
+    )
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    pdf_path = str(OUTPUT_DIR / f"{date_str}_research.pdf")
+
+    NAVY  = HexColor("#0D1B2A")
+    BLUE  = HexColor("#0EA5E9")
+    MUTED = HexColor("#64748B")
+    CARD  = HexColor("#EFF6FF")
+
+    doc = SimpleDocTemplate(
+        pdf_path, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm,
+        topMargin=1.5*cm, bottomMargin=2*cm,
+    )
+
+    S = {}
+    for name, kwargs in [
+        ("brand",    dict(fontSize=9,  textColor=white,  fontName="Helvetica-Bold")),
+        ("date_r",   dict(fontSize=9,  textColor=MUTED,  alignment=TA_RIGHT)),
+        ("headline", dict(fontSize=20, textColor=NAVY,   fontName="Helvetica-Bold", leading=26, spaceBefore=14, spaceAfter=10)),
+        ("section",  dict(fontSize=11, textColor=BLUE,   fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=5)),
+        ("body",     dict(fontSize=10, textColor=NAVY,   leading=16, spaceAfter=6)),
+        ("bullet",   dict(fontSize=10, textColor=NAVY,   leading=16, spaceAfter=5, leftIndent=14)),
+        ("takeaway", dict(fontSize=11, textColor=NAVY,   fontName="Helvetica-Bold", leading=18, leftIndent=10, rightIndent=10, spaceBefore=6, spaceAfter=6)),
+        ("footer",   dict(fontSize=8,  textColor=MUTED,  alignment=TA_CENTER)),
+    ]:
+        S[name] = ParagraphStyle(name, **kwargs)
+
+    story = []
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    hdr = Table(
+        [[Paragraph("THE TECH TUTORS — AI Research Brief", S["brand"]),
+          Paragraph(date_str, S["date_r"])]],
+        colWidths=["70%", "30%"],
+    )
+    hdr.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
+        ("TOPPADDING",    (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING",   (0, 0), (0,  -1), 14),
+        ("RIGHTPADDING",  (1, 0), (1,  -1), 14),
+        ("LINEBELOW",     (0, -1), (-1, -1), 3, BLUE),
+    ]))
+    story.append(hdr)
+
+    # ── Headline ──────────────────────────────────────────────────────────────
+    story.append(Paragraph(report.get("headline", ""), S["headline"]))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=BLUE, spaceAfter=10))
+
+    # ── Executive Summary ─────────────────────────────────────────────────────
+    story.append(Paragraph("EXECUTIVE SUMMARY", S["section"]))
+    story.append(Paragraph(report.get("executive_summary", ""), S["body"]))
+
+    # ── Key Findings ──────────────────────────────────────────────────────────
+    story.append(Paragraph("KEY FINDINGS", S["section"]))
+    for finding in report.get("key_findings", []):
+        story.append(Paragraph("&#x2022;  " + finding, S["bullet"]))
+
+    story.append(Spacer(1, 8))
+
+    # ── Business Impact ───────────────────────────────────────────────────────
+    story.append(Paragraph("WHAT THIS MEANS FOR YOUR BUSINESS", S["section"]))
+    for impact in report.get("business_impact", []):
+        story.append(Paragraph("&#x2022;  " + impact, S["bullet"]))
+
+    story.append(Spacer(1, 8))
+
+    # ── The Tech Tutors' Take ─────────────────────────────────────────────────
+    story.append(Paragraph("THE TECH TUTORS' TAKE", S["section"]))
+    story.append(Paragraph(report.get("tech_tutors_take", ""), S["body"]))
+
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=1, color=BLUE))
+    story.append(Spacer(1, 8))
+
+    # ── Key Takeaway (highlighted) ────────────────────────────────────────────
+    story.append(Paragraph("KEY TAKEAWAY", S["section"]))
+    takeaway_box = Table(
+        [[Paragraph(report.get("key_takeaway", ""), S["takeaway"])]],
+        colWidths=["100%"],
+    )
+    takeaway_box.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), CARD),
+        ("LINEAFTER",     (0, 0), (0,  -1), 3, BLUE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 14),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 14),
+        ("ROUNDEDCORNERS", [6]),
+    ]))
+    story.append(takeaway_box)
+
+    # ── Sources ───────────────────────────────────────────────────────────────
+    if source_url:
+        story.append(Spacer(1, 14))
+        story.append(Paragraph("SOURCE", S["section"]))
+        story.append(Paragraph(source_url, S["body"]))
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 20))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "The Tech Tutors &nbsp;|&nbsp; AI Tools &amp; Automations for Businesses "
+        "&nbsp;|&nbsp; the-tech-tutors.vercel.app",
+        S["footer"],
+    ))
+
+    doc.build(story)
+    print(f"  [designer] Research PDF -> {pdf_path}")
+    return pdf_path

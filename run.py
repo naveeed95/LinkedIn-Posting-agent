@@ -16,11 +16,11 @@ from datetime import date, datetime
 from content_generator import (
     choose_weekly_strategy,
     engagement_scorer,
-    generate_design_brief,
+    generate_research_report,
     generate_text_post_variants,
     plan_weekly_posts,
 )
-from designer import generate_graphic, generate_slide_deck
+from designer import generate_research_pdf
 from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_document, post_to_linkedin_with_image
 from research import fetch_deep_topic_research, fetch_trending_topics
 from scheduler import (
@@ -211,35 +211,33 @@ def cmd_post(preview: bool = False, force: bool = False):
             print("Skipped.")
 
     elif fmt == "design":
-        print("Generating design brief with Claude...\n")
-        brief = generate_design_brief(topic)
-        slot["design_brief"] = brief
+        print("Generating research report with AI...\n")
+        report = generate_research_report(topic)
+        slot["design_brief"] = report
 
         print("=" * 60)
-        print(f"TEMPLATE      : {brief.get('template', 'list').upper()}")
-        print(f"GRAPHIC TITLE : {brief['graphic_title']}")
-        print(f"LAYOUT        : {brief['graphic_layout']}")
-        print("\nGRAPHIC POINTS:")
-        for i, pt in enumerate(brief["graphic_points"], 1):
-            print(f"  {i}. {pt}")
-        print("\nCAPTION TO POST:")
-        print(brief["caption"])
+        print(f"HEADLINE    : {report.get('headline', '')}")
+        print(f"\nSUMMARY     : {report.get('executive_summary', '')[:200]}...")
+        print(f"\nFINDINGS    :")
+        for i, f in enumerate(report.get("key_findings", []), 1):
+            print(f"  {i}. {f}")
+        print(f"\nCAPTION     :")
+        print(report["caption"][:300] + "...")
         print("=" * 60)
 
-        print("\nGenerating PDF carousel with Pillow...")
-        pdf_path, preview_path = generate_slide_deck(brief, slot["date"])
-        print(f"PDF:     {pdf_path}")
-        print(f"Preview: {preview_path}\n")
+        print("\nGenerating research PDF...")
+        pdf_path = generate_research_pdf(report, slot["date"], topic.get("source_url", ""))
+        print(f"PDF: {pdf_path}\n")
 
         if preview:
             update_slot(slot)
             print("Preview mode — not published.")
             return
 
-        answer = input("Post this carousel to LinkedIn? [Y/n]: ").strip().lower()
+        answer = input("Post this research PDF to LinkedIn? [Y/n]: ").strip().lower()
         if answer in ("", "y", "yes"):
-            print("Uploading PDF carousel and publishing...")
-            result = post_to_linkedin_with_document(brief["caption"], pdf_path)
+            print("Uploading research PDF and publishing...")
+            result = post_to_linkedin_with_document(report["caption"], pdf_path)
             slot["status"]   = "posted"
             slot["post_urn"] = result["urn"]
             update_slot(slot)
@@ -343,10 +341,10 @@ def cmd_auto():
     if fmt == "design":
         hint = ""
         for attempt in range(max_regenerations + 1):
-            print(f"Generating design brief (attempt {attempt + 1})...")
-            brief = generate_design_brief(topic, hint=hint, top_hashtags=top_hashtags or None)
+            print(f"Generating research report (attempt {attempt + 1})...")
+            report = generate_research_report(topic, hint=hint, top_hashtags=top_hashtags or None)
 
-            msg_id = send_design_approval_message(brief, topic, day)
+            msg_id = send_design_approval_message(report, topic, day)
             if not msg_id:
                 print("Discord not configured — falling back to interactive mode.")
                 cmd_post()
@@ -356,20 +354,20 @@ def cmd_auto():
             action = decision.get("action")
 
             if action == "post":
-                print("Generating PDF carousel...")
-                pdf_path, _ = generate_slide_deck(brief, slot["date"])
+                print("Generating research PDF...")
+                pdf_path = generate_research_pdf(report, slot["date"], topic.get("source_url", ""))
 
-                print("Uploading PDF carousel to LinkedIn...")
-                result = post_to_linkedin_with_document(brief["caption"], pdf_path)
+                print("Uploading research PDF to LinkedIn...")
+                result = post_to_linkedin_with_document(report["caption"], pdf_path)
                 slot["status"]       = "posted"
                 slot["post_urn"]     = result["urn"]
-                slot["design_brief"] = brief
+                slot["design_brief"] = report
                 update_slot(slot)
 
                 try:
                     log_post({
                         "post_urn":       result["urn"],
-                        "post_text":      brief["caption"],
+                        "post_text":      report["caption"],
                         "topic_title":    topic["title"],
                         "day_of_week":    day,
                         "posted_at":      datetime.now().isoformat(),
@@ -387,7 +385,7 @@ def cmd_auto():
                     if post_first_comment(result["urn"], comment):
                         print("First comment with source link posted.")
 
-                send_posted_confirmation(result["url"], 1, brief["caption"])
+                send_posted_confirmation(result["url"], 1, report["caption"])
                 print(f"Live: {result['url']}")
                 return
 
