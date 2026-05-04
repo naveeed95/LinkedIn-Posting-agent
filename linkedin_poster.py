@@ -27,7 +27,10 @@ def _parse_result(resp: requests.Response) -> dict:
 
 
 def _author_urn() -> str:
-    return os.environ.get("LINKEDIN_ORG_URN") or os.environ["LINKEDIN_PERSON_URN"]
+    urn = os.environ.get("LINKEDIN_ORG_URN", "")
+    if not urn:
+        raise EnvironmentError("LINKEDIN_ORG_URN is required — personal posting is disabled")
+    return urn
 
 
 def post_to_linkedin(text: str) -> dict:
