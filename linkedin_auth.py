@@ -7,6 +7,7 @@ Usage: python linkedin_auth.py
 """
 
 import os
+import secrets
 import webbrowser
 import urllib.parse
 import http.server
@@ -29,6 +30,15 @@ class CallbackHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
+
+        received_state = params.get("state", [None])[0]
+        expected_state = auth_code_holder.get("_state")
+        if not expected_state or received_state != expected_state:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"<h2>Auth failed. State mismatch — possible CSRF.</h2>")
+            return
+
         if "code" in params:
             auth_code_holder["code"] = params["code"][0]
             self.send_response(200)
@@ -44,11 +54,14 @@ class CallbackHandler(http.server.BaseHTTPRequestHandler):
 
 
 def get_auth_code():
+    state = secrets.token_urlsafe(16)
+    auth_code_holder["_state"] = state
     params = {
         "response_type": "code",
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "scope": SCOPE,
+        "state": state,
     }
     url = "https://www.linkedin.com/oauth/v2/authorization?" + urllib.parse.urlencode(params)
 

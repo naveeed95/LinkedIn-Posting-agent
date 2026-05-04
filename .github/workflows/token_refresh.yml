@@ -5,6 +5,10 @@ on:
     - cron: '0 2 1 */2 *'  # 1st of every 2nd month at 7am PKT — well within 60-day expiry
   workflow_dispatch:
 
+concurrency:
+  group: token-refresh
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -16,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: pip install requests python-dotenv PyNaCl
@@ -30,3 +36,22 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
         run: python token_refresher.py
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: |
+          python -c "
+          import os, requests
+          token = os.environ.get('DISCORD_BOT_TOKEN', '')
+          channel = os.environ.get('DISCORD_ANALYTICS_CHANNEL_ID', '')
+          if token and channel:
+              requests.post(
+                  f'https://discord.com/api/v10/channels/{channel}/messages',
+                  json={'content': '❌ **LinkedIn token refresh FAILED** — manual re-auth may be needed. Run: python linkedin_auth.py'},
+                  headers={'Authorization': f'Bot {token}'},
+                  timeout=10,
+              )
+          "

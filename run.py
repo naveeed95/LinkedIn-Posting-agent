@@ -48,8 +48,8 @@ def cmd_plan():
     try:
         from analytics_tracker import get_performance_summary
         performance_data = get_performance_summary()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [plan] Analytics unavailable: {e}")
 
     # Step 1: AI chooses domain + posting strategy for the week
     print("AI choosing this week's content domain and posting strategy...")
@@ -98,8 +98,7 @@ def cmd_plan():
 
     print("This week's content plan:\n")
     score_map: dict[int, int] = {}
-    for slot in slots:
-        idx   = slots.index(slot)
+    for idx, slot in enumerate(slots):
         score = next((p.get("score", "—") for p in planned if p.get("day_index") == idx), "—")
         if isinstance(score, int):
             score_map[idx] = score
@@ -364,20 +363,10 @@ def cmd_auto():
 
     top_urls = []
     try:
-        from analytics_tracker import _connect
-        with _connect() as conn:
-            rows = conn.execute(
-                """SELECT p.post_id FROM posts p
-                   JOIN metrics m ON p.post_id = m.post_id
-                   ORDER BY (m.likes + m.comments * 2 + m.shares * 3) DESC
-                   LIMIT 3"""
-            ).fetchall()
-            top_urls = [
-                f"https://www.linkedin.com/feed/update/{r['post_id']}/"
-                for r in rows if r["post_id"]
-            ]
-    except Exception:
-        pass
+        from analytics_tracker import get_top_post_urls
+        top_urls = get_top_post_urls(n=3)
+    except Exception as e:
+        print(f"  [auto] Could not fetch top post URLs: {e}")
 
     max_regenerations = 3
 
@@ -475,11 +464,8 @@ def cmd_auto():
                 slot["status"] = "skipped"
                 update_slot(slot)
                 print("No response within timeout. Logged as missed.")
-                from discord_bot import _send_message, _channel
-                _send_message(
-                    _channel("DISCORD_APPROVALS_CHANNEL_ID"),
-                    f"⚠️ **No approval received** for today's design post ({day} {slot['date']}). Logged as missed."
-                )
+                from discord_bot import notify_timeout
+                notify_timeout(day, slot["date"])
                 return
 
     # ── Text post flow ────────────────────────────────────────────────────────
@@ -600,11 +586,8 @@ def cmd_auto():
                 slot["status"] = "skipped"
                 update_slot(slot)
                 print("No response within timeout. Logged as missed.")
-                from discord_bot import _send_message, _channel
-                _send_message(
-                    _channel("DISCORD_APPROVALS_CHANNEL_ID"),
-                    f"⚠️ **No approval received** for today's post ({day} {slot['date']}). Logged as missed."
-                )
+                from discord_bot import notify_timeout
+                notify_timeout(day, slot["date"])
                 return
 
 

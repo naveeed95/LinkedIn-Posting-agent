@@ -468,6 +468,17 @@ def send_weekly_plan(
     return msg_id
 
 
+def notify_timeout(day: str, date_str: str) -> None:
+    _send_message(
+        _channel("DISCORD_APPROVALS_CHANNEL_ID"),
+        f"⚠️ **No approval received** for today's post ({day} {date_str}). Logged as missed.",
+    )
+
+
+def notify_workflow_failure(message: str) -> None:
+    _send_message(_channel("DISCORD_ANALYTICS_CHANNEL_ID"), message)
+
+
 # ── CLI entry point (called by GitHub Actions) ─────────────────────────────────
 
 if __name__ == "__main__":

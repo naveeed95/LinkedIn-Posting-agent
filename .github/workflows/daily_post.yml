@@ -5,6 +5,10 @@ on:
     - cron: '0 8 * * 1-5'  # 1pm PKT (UTC+5), Mon-Fri
   workflow_dispatch:
 
+concurrency:
+  group: posting-agent-db
+  cancel-in-progress: false
+
 jobs:
   post:
     runs-on: ubuntu-latest
@@ -16,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -74,3 +80,14 @@ jobs:
           name: weekly-schedule
           path: weekly_schedule.json
           retention-days: 90
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: |
+          python -c "
+          from discord_bot import notify_workflow_failure
+          notify_workflow_failure('❌ **Daily post workflow FAILED** — check GitHub Actions logs.')
+          "

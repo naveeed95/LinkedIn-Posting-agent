@@ -7,6 +7,7 @@ Run: python auto_responder.py
 
 import json
 import os
+import re
 import urllib.parse
 from datetime import date, timedelta
 from pathlib import Path
@@ -29,6 +30,16 @@ Reply to comments in The Tech Tutors brand voice:
 - End with a follow-up question to keep the conversation going
 - Keep replies under 300 characters
 - Never use: delve, leverage, synergy, game-changer"""
+
+
+def _sanitize_comment(text: str) -> str:
+    text = text[:500]
+    text = re.sub(
+        r"(?i)(ignore|disregard|forget|override)\s.{0,40}(above|previous|instruction|prompt|system)",
+        "",
+        text,
+    )
+    return text.strip()
 
 
 def _li_headers() -> dict:
@@ -112,6 +123,7 @@ def fetch_unanswered_comments() -> list[dict]:
 
 
 def generate_reply(comment_text: str, post_context: str = "") -> str:
+    comment_text = _sanitize_comment(comment_text)
     context_block = f"\nPost context: {post_context}" if post_context else ""
 
     prompt = f"""Write a reply to this LinkedIn comment on The Tech Tutors page.{context_block}

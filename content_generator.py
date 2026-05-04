@@ -1,5 +1,7 @@
 import json
 import os
+import re
+from datetime import date as _date
 
 from groq import Groq
 from dotenv import load_dotenv
@@ -17,7 +19,10 @@ from llm_client import (
 load_dotenv()
 
 # Direct Groq client retained for the cheap quality-fix pass
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
+_groq_key = os.environ.get("GROQ_API_KEY", "")
+if not _groq_key:
+    raise EnvironmentError("GROQ_API_KEY is required but not set")
+client = Groq(api_key=_groq_key)
 MODEL = "llama-3.3-70b-versatile"
 
 # ── Brand Identity ────────────────────────────────────────────────────────────
@@ -136,7 +141,6 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
 
 
 def _extract_json(text: str, opening: str) -> str:
-    import re
     # Strip markdown code fences if present
     text = re.sub(r"```(?:json)?\s*", "", text).strip()
     close = "]" if opening == "[" else "}"
@@ -219,7 +223,6 @@ def choose_weekly_strategy(
     performance_data: dict | None = None,
     recent_titles: list[str] | None = None,
 ) -> dict:
-    from datetime import date as _date
 
     perf_block = ""
     if performance_data and performance_data.get("top_post_topic"):

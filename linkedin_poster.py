@@ -45,7 +45,7 @@ def post_to_linkedin(text: str) -> dict:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-    resp = requests.post(UGC_URL, json=payload, headers=_headers(token))
+    resp = requests.post(UGC_URL, json=payload, headers=_headers(token), timeout=30)
     resp.raise_for_status()
     return _parse_result(resp)
 
@@ -60,7 +60,7 @@ def _register_image(token: str, person_urn: str) -> tuple[str, str]:
             ],
         }
     }
-    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token))
+    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token), timeout=30)
     resp.raise_for_status()
     data = resp.json()["value"]
     upload_url = data["uploadMechanism"][
@@ -75,6 +75,7 @@ def _upload_image_binary(upload_url: str, token: str, image_path: str):
             upload_url,
             data=f,
             headers={"Authorization": f"Bearer {token}", "Content-Type": "image/png"},
+            timeout=60,
         )
     resp.raise_for_status()
 
@@ -105,7 +106,7 @@ def post_to_linkedin_with_image(text: str, image_path: str) -> dict:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-    resp = requests.post(UGC_URL, json=payload, headers=_headers(token))
+    resp = requests.post(UGC_URL, json=payload, headers=_headers(token), timeout=30)
     resp.raise_for_status()
     return _parse_result(resp)
 
@@ -123,7 +124,7 @@ def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
             ],
         }
     }
-    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token))
+    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token), timeout=30)
     resp.raise_for_status()
     data = resp.json()["value"]
     upload_url = data["uploadMechanism"][
@@ -136,6 +137,7 @@ def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
             upload_url,
             data=f,
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/pdf"},
+            timeout=60,
         )
     resp.raise_for_status()
 
@@ -151,7 +153,7 @@ def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-    resp = requests.post(UGC_URL, json=payload, headers=_headers(token))
+    resp = requests.post(UGC_URL, json=payload, headers=_headers(token), timeout=30)
     resp.raise_for_status()
     return _parse_result(resp)
 
@@ -168,6 +170,7 @@ def post_first_comment(post_urn: str, comment_text: str) -> bool:
         f"https://api.linkedin.com/v2/socialActions/{encoded_urn}/comments",
         json=payload,
         headers=_headers(token),
+        timeout=30,
     )
     if not resp.ok:
         print(f"  Warning: first comment failed ({resp.status_code}): {resp.text[:200]}")
@@ -184,6 +187,7 @@ def get_post_stats(post_urn: str) -> dict:
         resp = requests.get(
             f"https://api.linkedin.com/v2/socialActions/{encoded}",
             headers=_headers(token),
+            timeout=15,
         )
         if not resp.ok:
             return {}

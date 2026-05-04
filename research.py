@@ -142,38 +142,39 @@ def fetch_youtube_transcripts() -> list[dict]:
         print("  [research] SUPADATA_API_KEY not set — skipping YouTube transcripts.")
         return []
 
+    try:
+        from supadata.client import Supadata
+    except ImportError:
+        print("  [research] supadata SDK not installed — skipping YouTube transcripts.")
+        return []
+
+    client = Supadata(api_key=api_key)
     items = []
+
     for channel_name, channel_id in AI_YOUTUBE_CHANNELS:
         try:
-            resp = requests.get(
-                "https://api.supadata.ai/v1/youtube/channel/videos",
-                params={"channelId": channel_id, "limit": 2},
-                headers={"x-api-key": api_key},
-                timeout=15,
+            video_ids_obj = client.youtube.channel.videos(id=channel_id, limit=2)
+            ids = (
+                video_ids_obj.videoIds
+                if hasattr(video_ids_obj, "videoIds")
+                else (video_ids_obj if isinstance(video_ids_obj, list) else [])
             )
-            if not resp.ok:
-                print(f"  [research] Supadata {channel_name} failed ({resp.status_code})")
-                continue
-            for video in resp.json().get("videos", []):
-                video_id = video.get("videoId", "")
-                title = video.get("title", "").strip()
-                if not video_id or not title:
-                    continue
-                tr = requests.get(
-                    "https://api.supadata.ai/v1/youtube/transcript",
-                    params={"videoId": video_id, "format": "text"},
-                    headers={"x-api-key": api_key},
-                    timeout=20,
-                )
-                excerpt = tr.json().get("content", "")[:400] if tr.ok else ""
+            for vid in ids[:2]:
+                url = f"https://www.youtube.com/watch?v={vid}"
+                try:
+                    tr = client.transcript(url=url, text=True)
+                    excerpt = tr.content[:400] if isinstance(getattr(tr, "content", None), str) else ""
+                except Exception:
+                    excerpt = ""
                 items.append(_make_topic(
-                    f"[YouTube] {title}",
-                    f"https://www.youtube.com/watch?v={video_id}",
+                    f"[YouTube/{channel_name}] {vid}",
+                    url,
                     f"YouTube/{channel_name}",
                     description=f"Transcript: {excerpt}",
                 ))
         except Exception as e:
             print(f"  [research] Supadata {channel_name} error: {e}")
+
     return items
 
 

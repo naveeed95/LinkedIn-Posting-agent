@@ -282,6 +282,21 @@ def get_topic_history(days: int = 14) -> list[str]:
     return [r["topic"] for r in rows if r["topic"]]
 
 
+def get_top_post_urls(n: int = 3) -> list[str]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT p.post_id FROM posts p
+               JOIN metrics m ON p.post_id = m.post_id
+               ORDER BY (m.likes + m.comments * 2 + m.shares * 3) DESC
+               LIMIT ?""",
+            (n,),
+        ).fetchall()
+    return [
+        f"https://www.linkedin.com/feed/update/{r['post_id']}/"
+        for r in rows if r["post_id"]
+    ]
+
+
 def get_top_hashtags(n: int = 10) -> list[str]:
     with _connect() as conn:
         rows = conn.execute(

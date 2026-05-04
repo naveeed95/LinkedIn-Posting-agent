@@ -1,11 +1,8 @@
 """
 Multi-provider LLM router. Each model is a named entity.
 
-Free-tier providers used:
-  - Groq         (Llama 3.3 70B, Llama 3.1 8B)             — already in your stack
-  - OpenRouter   (DeepSeek V3, Qwen 2.5 72B, Hermes 3 405B) — set OPENROUTER_API_KEY
-  - Cerebras     (Llama 3.3 70B)                            — set CEREBRAS_API_KEY (optional fallback)
-
+Providers used:
+  - Groq         (Llama 3.3 70B, Llama 3.1 8B)  — set GROQ_API_KEY
 Public API:
   call_model(model_key, prompt, system, max_tokens) -> str
       Run a single named model.
@@ -23,52 +20,27 @@ Editing models:
 """
 
 import os
+import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from groq import Groq
-from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # ── Provider clients ──────────────────────────────────────────────────────────
 
-_groq = Groq(api_key=os.environ["GROQ_API_KEY"])
-
-_openrouter = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-)
-
-_cerebras = OpenAI(
-    base_url="https://api.cerebras.ai/v1",
-    api_key=os.environ.get("CEREBRAS_API_KEY", ""),
-)
-
+_groq_key = os.environ.get("GROQ_API_KEY", "")
+if not _groq_key:
+    raise EnvironmentError("GROQ_API_KEY is required but not set")
+_groq = Groq(api_key=_groq_key)
 
 # ── Model registry ────────────────────────────────────────────────────────────
 # Each entry is keyed by short id and describes display name, provider, and
 # the model id string used by that provider's API.
 
 MODELS = {
-    "deepseek": {
-        "display":     "DeepSeek V3",
-        "provider":    "openrouter",
-        "model_id":    "deepseek/deepseek-chat-v3:free",
-        "temperature": 0.85,
-    },
-    "qwen": {
-        "display":     "Qwen 2.5 72B",
-        "provider":    "openrouter",
-        "model_id":    "qwen/qwen-2.5-72b-instruct:free",
-        "temperature": 0.9,
-    },
-    "hermes": {
-        "display":     "Hermes 3 405B",
-        "provider":    "openrouter",
-        "model_id":    "nousresearch/hermes-3-llama-3.1-405b:free",
-        "temperature": 0.95,
-    },
     "llama-70b": {
         "display":     "Llama 3.3 70B",
         "provider":    "groq",
@@ -81,12 +53,6 @@ MODELS = {
         "model_id":    "llama-3.1-8b-instant",
         "temperature": 0.3,
     },
-    "cerebras-llama": {
-        "display":     "Cerebras Llama 3.3",
-        "provider":    "cerebras",
-        "model_id":    "llama-3.3-70b",
-        "temperature": 0.85,
-    },
 }
 
 
@@ -95,14 +61,45 @@ MODELS = {
 # Add/remove model keys here to control how many variants you get per job.
 
 VARIANT_MODELS = {
-    "text":     ["deepseek", "qwen", "hermes", "llama-70b"],
-    "carousel": ["deepseek", "qwen", "llama-70b"],
-    "research": ["deepseek", "llama-70b"],
+    "text":     ["llama-70b"],
+    "carousel": ["llama-70b"],
+    "research": ["llama-70b"],
 }
 
 UTILITY_MODEL     = "llama-8b"   # for engagement scoring, classification
 QUALITY_FIX_MODEL = "llama-70b"  # for banned-word cleanup
-STRATEGY_MODEL    = "deepseek"   # for weekly planning & topic ranking
+STRATEGY_MODEL    = "llama-70b"  # for weekly planning & topic ranking
+
+
+# ── Provider availability ─────────────────────────────────────────────────────
+
+def _provider_available(provider: str) -> bool:
+    return True  # groq validated at import; only provider now
+
+
+def _call_with_retry(
+    provider: str,
+    model_id: str,
+    prompt: str,
+    system: str,
+    max_tokens: int,
+    temperature: float,
+    max_retries: int = 3,
+) -> str:
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            return _dispatch(provider, model_id, prompt, system, max_tokens, temperature)
+        except Exception as e:
+            msg = str(e).lower()
+            is_retryable = any(code in msg for code in ("429", "500", "502", "503", "rate limit", "rate_limit", "overloaded"))
+            if not is_retryable or attempt == max_retries - 1:
+                raise
+            last_error = e
+            delay = min(2 ** attempt + random.uniform(0, 1), 30)
+            print(f"  [llm] {provider} transient error (attempt {attempt + 1}/{max_retries}), retry in {delay:.1f}s: {str(e)[:80]}")
+            time.sleep(delay)
+    raise RuntimeError(f"unreachable — last error: {last_error}")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -124,8 +121,10 @@ def call_model(
         )
 
     cfg = MODELS[model_key]
+    if not _provider_available(cfg["provider"]):
+        raise RuntimeError(f"Provider '{cfg['provider']}' not configured — set the API key env var")
     temp = temperature if temperature is not None else cfg["temperature"]
-    return _dispatch(
+    return _call_with_retry(
         provider    = cfg["provider"],
         model_id    = cfg["model_id"],
         prompt      = prompt,
@@ -143,17 +142,21 @@ def call_with_fallback(
 ) -> str:
     """Try each model in order. Return the first one that succeeds.
 
+    Skips models whose provider API key is not configured.
     Used for utility / strategy / quality-fix calls where we only need ONE
     answer and don't care which provider produced it.
     """
+    available = [k for k in model_keys if _provider_available(MODELS[k]["provider"])]
+    if not available:
+        raise RuntimeError("No providers available — check API key env vars")
+
     last_error: Exception | None = None
-    for model_key in model_keys:
+    for model_key in available:
         try:
             return call_model(model_key, prompt, system, max_tokens)
         except Exception as e:
             print(f"  [llm] {model_key} failed: {str(e)[:120]} — trying next")
             last_error = e
-            time.sleep(1)
     raise RuntimeError(f"All fallback models exhausted. Last error: {last_error}")
 
 
@@ -174,25 +177,37 @@ def generate_variants(
             f"Unknown job: {job}. Use one of: {list(VARIANT_MODELS.keys())}"
         )
 
-    variants: list[dict] = []
-    for model_key in VARIANT_MODELS[job]:
+    model_keys = [
+        k for k in VARIANT_MODELS[job]
+        if _provider_available(MODELS[k]["provider"])
+    ]
+    if not model_keys:
+        raise RuntimeError(f"No providers available for job '{job}' — check API key env vars")
+
+    order = {k: i for i, k in enumerate(model_keys)}
+
+    def _try_model(model_key: str) -> dict | None:
         cfg = MODELS[model_key]
         try:
             print(f"  [llm] Generating with {cfg['display']}...")
             text = call_model(model_key, prompt, system, max_tokens)
-            variants.append({
-                "model_key":    model_key,
-                "display_name": cfg["display"],
-                "text":         text,
-            })
+            return {"model_key": model_key, "display_name": cfg["display"], "text": text}
         except Exception as e:
             print(f"  [llm] {cfg['display']} failed: {str(e)[:120]} — skipping this variant")
-            continue
+            return None
+
+    variants: list[dict] = []
+    with ThreadPoolExecutor(max_workers=min(4, len(model_keys))) as pool:
+        futures = {pool.submit(_try_model, k): k for k in model_keys}
+        for fut in as_completed(futures):
+            result = fut.result()
+            if result:
+                variants.append(result)
 
     if not variants:
         raise RuntimeError(f"All models failed for job '{job}'")
 
-    return variants
+    return sorted(variants, key=lambda v: order.get(v["model_key"], 99))
 
 
 # ── Provider dispatch ─────────────────────────────────────────────────────────
@@ -212,14 +227,6 @@ def _dispatch(
 
     if provider == "groq":
         client = _groq
-    elif provider == "openrouter":
-        if not os.environ.get("OPENROUTER_API_KEY"):
-            raise RuntimeError("OPENROUTER_API_KEY not set in environment")
-        client = _openrouter
-    elif provider == "cerebras":
-        if not os.environ.get("CEREBRAS_API_KEY"):
-            raise RuntimeError("CEREBRAS_API_KEY not set in environment")
-        client = _cerebras
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -228,6 +235,7 @@ def _dispatch(
         messages    = messages,
         max_tokens  = max_tokens,
         temperature = temperature,
+        timeout     = 60,
     )
     return response.choices[0].message.content.strip()
 
