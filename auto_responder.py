@@ -14,12 +14,10 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from groq import Groq
+
+from llm_client import UTILITY_MODEL, call_model
 
 load_dotenv()
-
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "llama-3.3-70b-versatile"
 
 REPLY_SYSTEM = """You are a community manager for The Tech Tutors LinkedIn page.
 Reply to comments in The Tech Tutors brand voice:
@@ -63,6 +61,8 @@ def fetch_recent_post_urns(days: int = 7) -> list[str]:
         schedule = json.load(f)
 
     for week_slots in schedule.values():
+        if not isinstance(week_slots, list):
+            continue
         for slot in week_slots:
             if (
                 slot.get("status") == "posted"
@@ -99,6 +99,21 @@ def _page_has_replied(comment: dict) -> bool:
     return False
 
 
+def _extract_comment_urn(comment: dict) -> str:
+    """LinkedIn returns the comment identifier under different keys depending
+    on API version. Probe known fields in order."""
+    for key in ("$URN", "urn", "object"):
+        val = comment.get(key)
+        if isinstance(val, str) and val:
+            return val
+    nested = comment.get("commentV2") or {}
+    if isinstance(nested, dict):
+        urn = nested.get("urn", "")
+        if isinstance(urn, str) and urn:
+            return urn
+    return ""
+
+
 def fetch_unanswered_comments() -> list[dict]:
     post_urns = fetch_recent_post_urns(days=7)
     if not post_urns:
@@ -110,13 +125,18 @@ def fetch_unanswered_comments() -> list[dict]:
         for comment in fetch_comments(urn):
             if not _page_has_replied(comment):
                 message = comment.get("message", {}).get("text", "").strip()
-                if message:
-                    unanswered.append({
-                        "post_urn": urn,
-                        "comment_urn": comment.get("$URN", ""),
-                        "author": comment.get("actor", "unknown"),
-                        "text": message,
-                    })
+                if not message:
+                    continue
+                comment_urn = _extract_comment_urn(comment)
+                if not comment_urn:
+                    print(f"  [responder] Comment without URN skipped (post {urn}): {message[:60]}")
+                    continue
+                unanswered.append({
+                    "post_urn": urn,
+                    "comment_urn": comment_urn,
+                    "author": comment.get("actor", "unknown"),
+                    "text": message,
+                })
 
     print(f"  [responder] Found {len(unanswered)} unanswered comments.")
     return unanswered
@@ -141,16 +161,13 @@ Requirements:
 Reply:"""
 
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": REPLY_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=200,
-            temperature=0.7,
+        return call_model(
+            UTILITY_MODEL,
+            prompt,
+            system      = REPLY_SYSTEM,
+            max_tokens  = 200,
+            temperature = 0.7,
         )
-        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"  [responder] generate_reply error: {e}")
         return ""

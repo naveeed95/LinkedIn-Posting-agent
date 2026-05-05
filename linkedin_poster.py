@@ -1,4 +1,6 @@
 import os
+import random
+import time
 import urllib.parse
 
 import requests
@@ -9,6 +11,8 @@ load_dotenv()
 UGC_URL   = "https://api.linkedin.com/v2/ugcPosts"
 ASSET_URL = "https://api.linkedin.com/v2/assets?action=registerUpload"
 
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+
 
 def _headers(token: str) -> dict:
     return {
@@ -16,6 +20,41 @@ def _headers(token: str) -> dict:
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
     }
+
+
+def _request_with_retry(
+    method: str,
+    url: str,
+    *,
+    max_retries: int = 3,
+    timeout: int = 30,
+    **kwargs,
+) -> requests.Response:
+    """HTTP call with exponential backoff on transient errors.
+
+    Retries on 429 / 5xx responses, requests.Timeout, requests.ConnectionError.
+    Returns the final response — caller still invokes raise_for_status().
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = requests.request(method, url, timeout=timeout, **kwargs)
+            if resp.status_code in _RETRY_STATUSES and attempt < max_retries - 1:
+                delay = min(2 ** attempt + random.uniform(0, 1), 30)
+                print(f"  [linkedin] {method} {url} -> {resp.status_code}, retry in {delay:.1f}s")
+                time.sleep(delay)
+                continue
+            return resp
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_exc = e
+            if attempt == max_retries - 1:
+                raise
+            delay = min(2 ** attempt + random.uniform(0, 1), 30)
+            print(f"  [linkedin] {method} {url} transient error: {str(e)[:120]} — retry in {delay:.1f}s")
+            time.sleep(delay)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("unreachable")
 
 
 def _parse_result(resp: requests.Response) -> dict:
@@ -34,7 +73,9 @@ def _author_urn() -> str:
 
 
 def post_to_linkedin(text: str) -> dict:
-    token = os.environ["LINKEDIN_ACCESS_TOKEN"]
+    token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
+    if not token:
+        raise EnvironmentError("LINKEDIN_ACCESS_TOKEN is required but not set")
     person_urn = _author_urn()
 
     payload = {
@@ -48,7 +89,7 @@ def post_to_linkedin(text: str) -> dict:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-    resp = requests.post(UGC_URL, json=payload, headers=_headers(token), timeout=30)
+    resp = _request_with_retry("POST", UGC_URL, json=payload, headers=_headers(token))
     resp.raise_for_status()
     return _parse_result(resp)
 
@@ -63,7 +104,7 @@ def _register_image(token: str, person_urn: str) -> tuple[str, str]:
             ],
         }
     }
-    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token), timeout=30)
+    resp = _request_with_retry("POST", ASSET_URL, json=payload, headers=_headers(token))
     resp.raise_for_status()
     data = resp.json()["value"]
     upload_url = data["uploadMechanism"][
@@ -74,12 +115,14 @@ def _register_image(token: str, person_urn: str) -> tuple[str, str]:
 
 def _upload_image_binary(upload_url: str, token: str, image_path: str):
     with open(image_path, "rb") as f:
-        resp = requests.put(
-            upload_url,
-            data=f,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "image/png"},
-            timeout=60,
-        )
+        body = f.read()
+    resp = _request_with_retry(
+        "PUT",
+        upload_url,
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "image/png"},
+        timeout=60,
+    )
     resp.raise_for_status()
 
 
@@ -109,7 +152,7 @@ def post_to_linkedin_with_image(text: str, image_path: str) -> dict:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-    resp = requests.post(UGC_URL, json=payload, headers=_headers(token), timeout=30)
+    resp = _request_with_retry("POST", UGC_URL, json=payload, headers=_headers(token))
     resp.raise_for_status()
     return _parse_result(resp)
 
@@ -127,7 +170,7 @@ def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
             ],
         }
     }
-    resp = requests.post(ASSET_URL, json=payload, headers=_headers(token), timeout=30)
+    resp = _request_with_retry("POST", ASSET_URL, json=payload, headers=_headers(token))
     resp.raise_for_status()
     data = resp.json()["value"]
     upload_url = data["uploadMechanism"][
@@ -136,12 +179,14 @@ def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
     asset_urn = data["asset"]
 
     with open(pdf_path, "rb") as f:
-        resp = requests.put(
-            upload_url,
-            data=f,
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/pdf"},
-            timeout=60,
-        )
+        body = f.read()
+    resp = _request_with_retry(
+        "PUT",
+        upload_url,
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/pdf"},
+        timeout=60,
+    )
     resp.raise_for_status()
 
     payload = {
@@ -156,7 +201,7 @@ def post_to_linkedin_with_document(text: str, pdf_path: str) -> dict:
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
-    resp = requests.post(UGC_URL, json=payload, headers=_headers(token), timeout=30)
+    resp = _request_with_retry("POST", UGC_URL, json=payload, headers=_headers(token))
     resp.raise_for_status()
     return _parse_result(resp)
 
@@ -169,12 +214,16 @@ def post_first_comment(post_urn: str, comment_text: str) -> bool:
         "actor": actor,
         "message": {"text": comment_text},
     }
-    resp = requests.post(
-        f"https://api.linkedin.com/v2/socialActions/{encoded_urn}/comments",
-        json=payload,
-        headers=_headers(token),
-        timeout=30,
-    )
+    try:
+        resp = _request_with_retry(
+            "POST",
+            f"https://api.linkedin.com/v2/socialActions/{encoded_urn}/comments",
+            json=payload,
+            headers=_headers(token),
+        )
+    except (requests.Timeout, requests.ConnectionError) as e:
+        print(f"  Warning: first comment failed (network): {e}")
+        return False
     if not resp.ok:
         print(f"  Warning: first comment failed ({resp.status_code}): {resp.text[:200]}")
         return False

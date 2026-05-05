@@ -26,9 +26,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: playwright install chromium --with-deps
-
       - name: Download performance DB
         uses: actions/download-artifact@v4
         with:
@@ -43,10 +40,16 @@ jobs:
           path: cache/
         continue-on-error: true
 
+      - name: Download existing schedule
+        uses: actions/download-artifact@v4
+        with:
+          name: weekly-schedule
+          path: .
+        continue-on-error: true
+
       - name: Run auto post
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
           LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
           LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
@@ -71,6 +74,15 @@ jobs:
           name: performance-db
           path: performance.db
           retention-days: 90
+
+      - name: Upload LinkedIn rules cache
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linkedin-rules
+          path: cache/linkedin_rules.json
+          retention-days: 7
+        continue-on-error: true
 
       - name: Upload schedule
         uses: actions/upload-artifact@v4

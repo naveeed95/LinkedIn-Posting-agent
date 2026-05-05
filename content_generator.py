@@ -1,9 +1,7 @@
 import json
-import os
 import re
 from datetime import date as _date
 
-from groq import Groq
 from dotenv import load_dotenv
 
 from llm_client import (
@@ -17,13 +15,6 @@ from llm_client import (
 )
 
 load_dotenv()
-
-# Direct Groq client retained for the cheap quality-fix pass
-_groq_key = os.environ.get("GROQ_API_KEY", "")
-if not _groq_key:
-    raise EnvironmentError("GROQ_API_KEY is required but not set")
-client = Groq(api_key=_groq_key)
-MODEL = "llama-3.3-70b-versatile"
 
 # ── Brand Identity ────────────────────────────────────────────────────────────
 
@@ -133,7 +124,7 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
     if system_extra:
         system += "\n\n" + system_extra
     return call_with_fallback(
-        model_keys = [STRATEGY_MODEL, "llama-70b", "cerebras-llama"],
+        model_keys = [STRATEGY_MODEL, "llama-8b"],
         prompt     = prompt,
         system     = system,
         max_tokens = max_tokens,
@@ -173,13 +164,12 @@ Return ONLY the fixed post. No explanations.
 
 POST:
 {raw}"""
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2000,
-        temperature=0.2,
+    return call_model(
+        QUALITY_FIX_MODEL,
+        prompt,
+        max_tokens  = 2000,
+        temperature = 0.2,
     )
-    return response.choices[0].message.content.strip()
 
 
 def _get_rules_prompt() -> str:
