@@ -52,14 +52,29 @@ def cmd_plan():
     except Exception as e:
         print(f"  [plan] Analytics unavailable: {e}")
 
-    # Step 1: AI chooses domain + posting strategy for the week
+    if recent:
+        print(f"Avoiding {len(recent)} recently covered themes.\n")
+
+    if performance_data and performance_data.get("top_post_topic"):
+        print(f"Using past performance data (best hook: {performance_data['best_hook_type']}, best day: {performance_data['best_day']}).\n")
+
+    # Step 1: Quick pre-fetch (RSS + HN) to ground strategy in real trending data
+    print("Quick pre-fetch for strategy grounding (RSS + Hacker News)...")
+    from research import fetch_rss_feeds, fetch_hacker_news as _fetch_hn
+    pre_fetch = fetch_rss_feeds(max_per_feed=5) + _fetch_hn(max_items=10)
+
     print("AI choosing this week's content domain and posting strategy...")
     try:
-        strategy = choose_weekly_strategy(performance_data=performance_data, recent_titles=recent)
+        strategy = choose_weekly_strategy(
+            performance_data=performance_data,
+            recent_titles=recent,
+            trending_sample=pre_fetch[:15] if pre_fetch else None,
+        )
         save_strategy(strategy)
         print(f"\n{'='*60}")
         print(f"WEEKLY STRATEGY")
         print(f"  Domain:       {strategy['domain']}")
+        print(f"  Pillar:       {strategy.get('content_pillar', '—')}")
         print(f"  Keywords:     {', '.join(strategy.get('focus_keywords', []))}")
         print(f"  Posting time: {strategy['posting_time']}")
         print(f"  Rationale:    {strategy['rationale']}")
@@ -67,35 +82,6 @@ def cmd_plan():
     except Exception as e:
         print(f"  Strategy selection failed: {e}. Continuing with general topics.\n")
         strategy = {}
-
-    if recent:
-        print(f"Avoiding {len(recent)} recently covered themes.\n")
-
-    if performance_data and performance_data.get("top_post_topic"):
-        print(f"Using past performance data (best hook: {performance_data['best_hook_type']}, best day: {performance_data['best_day']}).\n")
-
-    # Step 2: Quick pre-fetch (RSS + HN) to ground strategy choice in real trending data
-    print("Quick pre-fetch for strategy grounding (RSS + Hacker News)...")
-    from research import fetch_rss_feeds, fetch_hacker_news as _fetch_hn
-    pre_fetch = fetch_rss_feeds(max_per_feed=5) + _fetch_hn(max_items=10)
-    if pre_fetch:
-        try:
-            strategy = choose_weekly_strategy(
-                performance_data=performance_data,
-                recent_titles=recent,
-                trending_sample=pre_fetch[:15],
-            )
-            save_strategy(strategy)
-            print(f"\n{'='*60}")
-            print(f"WEEKLY STRATEGY")
-            print(f"  Domain:       {strategy['domain']}")
-            print(f"  Pillar:       {strategy.get('content_pillar', '—')}")
-            print(f"  Keywords:     {', '.join(strategy.get('focus_keywords', []))}")
-            print(f"  Posting time: {strategy['posting_time']}")
-            print(f"  Rationale:    {strategy['rationale']}")
-            print(f"{'='*60}\n")
-        except Exception as e:
-            print(f"  Strategy re-selection failed: {e}. Continuing with initial strategy.\n")
 
     # Step 3: Full research fetch — Tavily now uses domain-aware queries
     print("Fetching trending AI topics from the web...")

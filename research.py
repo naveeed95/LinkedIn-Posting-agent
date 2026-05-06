@@ -191,29 +191,38 @@ def fetch_huggingface_trending(limit: int = 10) -> list[dict]:
 
 def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
     since = int(time.time()) - days_back * 86400
-    try:
-        resp = requests.get(
-            HN_API,
-            params={
-                "query":          "AI LLM machine learning automation agent",
-                "tags":           "story",
-                "hitsPerPage":    max_items,
-                "numericFilters": f"created_at_i>{since}",
-            },
-            headers=HEADERS,
-            timeout=10,
-        )
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"  [research] Hacker News failed: {e}")
-        return []
+    # Run multiple short queries — long multi-word queries + date filter return 0 on HN Algolia
+    hn_queries = ["AI", "LLM", "automation business", "artificial intelligence"]
+    items: list[dict] = []
+    seen: set[str] = set()
+    per_query = max(4, max_items // len(hn_queries))
 
-    items = []
-    for hit in resp.json().get("hits", []):
-        title = hit.get("title", "").strip()
-        url   = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
-        if title:
-            items.append(_make_topic(title, url, "Hacker News", points=hit.get("points", 0), published_date=hit.get("created_at", "")))
+    for query in hn_queries:
+        try:
+            resp = requests.get(
+                HN_API,
+                params={
+                    "query":          query,
+                    "tags":           "story",
+                    "hitsPerPage":    per_query,
+                    "numericFilters": f"created_at_i>{since}",
+                },
+                headers=HEADERS,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            for hit in resp.json().get("hits", []):
+                title = hit.get("title", "").strip()
+                url   = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
+                key   = title.lower()[:50]
+                if title and key not in seen and _is_ai_relevant(title):
+                    seen.add(key)
+                    items.append(_make_topic(title, url, "Hacker News",
+                                             points=hit.get("points", 0),
+                                             published_date=hit.get("created_at", "")))
+        except Exception as e:
+            print(f"  [research] Hacker News query '{query}' failed: {e}")
+
     print(f"  [research] Hacker News: {len(items)} items")
     return items
 

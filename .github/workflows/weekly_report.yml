@@ -33,6 +33,13 @@ jobs:
           path: .
         continue-on-error: true
 
+      - name: Download schedule
+        uses: actions/download-artifact@v4
+        with:
+          name: weekly-schedule
+          path: .
+        continue-on-error: true
+
       - name: Poll all recent metrics
         env:
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
