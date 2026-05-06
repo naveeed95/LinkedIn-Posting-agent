@@ -115,16 +115,24 @@ def cmd_plan():
         strategy=strategy,
     )
 
+    # Preserve already-posted or skipped slots — only overwrite pending ones
+    existing = {s["day"]: s for s in get_week_overview()} if get_week_overview() else {}
     slots = build_week_slots()
     for p in planned:
         idx = p.get("day_index", 0)
         if 0 <= idx < len(slots):
-            slots[idx]["topic"] = {
-                "title": p["title"],
-                "source_url": p["source_url"],
-                "angle": p["angle"],
-            }
-            slots[idx]["format"] = p["format"]
+            day = slots[idx]["day"]
+            ex  = existing.get(day, {})
+            if ex.get("status") in ("posted", "skipped"):
+                slots[idx] = ex  # keep existing posted/skipped slot intact
+            else:
+                slots[idx]["topic"] = {
+                    "title": p["title"],
+                    "source_url": p["source_url"],
+                    "angle": p["angle"],
+                    "why": p.get("why", ""),
+                }
+                slots[idx]["format"] = p["format"]
 
     init_week(slots)
 
