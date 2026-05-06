@@ -58,6 +58,7 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_APPROVALS_CHANNEL_ID: ${{ secrets.DISCORD_APPROVALS_CHANNEL_ID }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+          DISCORD_PLAN_CHANNEL_ID: ${{ secrets.DISCORD_PLAN_CHANNEL_ID }}
         run: python run.py plan
 
       - name: Upload schedule artifact
