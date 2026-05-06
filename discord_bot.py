@@ -425,7 +425,7 @@ Model engagement (which model audience prefers):
     if sheet_url:
         content += f"\n\n📋 **Full report:** {sheet_url}"
 
-    _send_message(channel_id, content[:2000])
+    _send_long_message(channel_id, content)
 
 
 def send_rules_update(changes: list[str]) -> None:

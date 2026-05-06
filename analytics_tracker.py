@@ -57,7 +57,8 @@ def _init_db() -> None:
                 posted_at       TIMESTAMP,
                 char_count      INTEGER,
                 hashtags        TEXT,
-                variant_chosen  INTEGER
+                variant_chosen  INTEGER,
+                chosen_model    TEXT
             );
 
             CREATE TABLE IF NOT EXISTS metrics (
@@ -91,6 +92,12 @@ def _init_db() -> None:
             );
         """)
         conn.commit()
+        # Migrate existing DBs that pre-date the chosen_model column
+        try:
+            conn.execute("ALTER TABLE posts ADD COLUMN chosen_model TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
     finally:
         conn.close()
 
@@ -117,8 +124,8 @@ def log_post(post_data: dict) -> None:
         conn.execute(
             """INSERT OR IGNORE INTO posts
                (post_id, post_text, topic, hook_type, day_of_week,
-                posted_at, char_count, hashtags, variant_chosen)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                posted_at, char_count, hashtags, variant_chosen, chosen_model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 post_data.get("post_urn", ""),
                 post_text,
@@ -129,6 +136,7 @@ def log_post(post_data: dict) -> None:
                 len(post_text),
                 hashtags,
                 post_data.get("variant_chosen", 1),
+                post_data.get("chosen_model", ""),
             ),
         )
         conn.execute(
@@ -271,6 +279,17 @@ def get_performance_summary() -> dict:
             ((datetime.now() - timedelta(days=7)).isoformat(),),
         ).fetchone()
 
+        model_rows = conn.execute(
+            """SELECT p.chosen_model,
+                      COUNT(*) AS wins,
+                      AVG(m.likes + m.comments * 2 + m.shares * 3) AS score
+               FROM posts p
+               JOIN metrics m ON p.post_id = m.post_id
+               WHERE p.chosen_model IS NOT NULL AND p.chosen_model != ''
+               GROUP BY p.chosen_model
+               ORDER BY wins DESC"""
+        ).fetchall()
+
     return {
         "best_hook_type":   hook_rows[0]["hook_type"] if hook_rows else "bold",
         "hook_scores":      {r["hook_type"]: round(r["score"] or 0, 1) for r in hook_rows},
@@ -279,6 +298,9 @@ def get_performance_summary() -> dict:
         "top_post_topic":   top_post["topic"] if top_post else None,
         "top_post_score":   round(top_post["score"] or 0, 1) if top_post else 0,
         "recent_avg_score": round((recent_avg["avg_score"] or 0), 1) if recent_avg else 0,
+        "best_model":       model_rows[0]["chosen_model"] if model_rows else "—",
+        "model_wins":       {r["chosen_model"]: r["wins"] for r in model_rows},
+        "model_scores":     {r["chosen_model"]: round(r["score"] or 0, 1) for r in model_rows},
     }
 
 
