@@ -226,10 +226,6 @@ def wait_for_approval(
                 custom_text = text[5:].strip()
                 if custom_text:
                     return {"action": "edit", "text": custom_text}
-            if text_lower.startswith("3 edit:"):
-                custom_text = text[7:].strip()
-                if custom_text:
-                    return {"action": "edit", "text": custom_text}
 
     print("  [discord] Approval timeout reached.")
     return {"action": "timeout"}
@@ -334,7 +330,7 @@ def send_comment_approval(
 **Suggested reply:**
 {suggested_reply[:500]}
 
-React ✅ to post | ✏️ to edit | ❌ to skip"""
+Reply `post` to send · `edit: [new text]` to customise · `skip` to ignore"""
 
     _send_message(channel_id, content[:2000])
 
@@ -424,43 +420,46 @@ def send_weekly_plan(
     strategy_block = ""
     if strategy:
         keywords = ", ".join(strategy.get("focus_keywords", [])) or "—"
+        pillar   = strategy.get("content_pillar", "")
         strategy_block = (
-            f"**🎯 Weekly Strategy**\n"
-            f"  • Domain:        {strategy.get('domain', '—')}\n"
+            f"**Weekly Strategy**\n"
+            f"  • Domain:         {strategy.get('domain', '—')}\n"
+            f"  • Content pillar: {pillar}\n"
             f"  • Focus keywords: {keywords}\n"
-            f"  • Posting time:  {strategy.get('posting_time', '—')}\n"
-            f"  • Rationale:     {strategy.get('rationale', '—')}\n\n"
+            f"  • Posting time:   {strategy.get('posting_time', '—')}\n"
+            f"  • Rationale:      {strategy.get('rationale', '—')}\n\n"
         )
 
     day_blocks: list[str] = []
     for i, slot in enumerate(slots):
         topic = slot.get("topic") or {}
-        fmt   = slot.get("format", "—")
         title = topic.get("title", "— not planned —")
         angle = topic.get("angle", "")
         url   = topic.get("source_url", "")
+        why   = topic.get("why", "")
         score = scores.get(i, "—")
-
-        icon = "🖼️" if fmt == "design" else "📝"
 
         block = (
             f"{divider}\n"
-            f"{icon} **{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"
+            f"**{slot['day']} — {slot['date']}**  `[text]`  score: {score}\n"
             f"**Topic:** {title}\n"
         )
         if angle:
             block += f"**Angle:** {angle}\n"
+        if why:
+            block += f"**Why this day:** {why}\n"
         if url:
             block += f"**Source:** {url}\n"
         day_blocks.append(block)
 
+    num_slots = len(slots)
     header = (
-        f"📅 **THE TECH TUTORS — Week Plan** | {week_start}\n"
-        f"_5 posts queued for Mon–Fri. Daily approvals will fire at posting time._\n\n"
+        f"**THE TECH TUTORS — Week Plan** | {week_start}\n"
+        f"_{num_slots} posts queued Mon–Sun. Approval message fires each day at posting time._\n\n"
     )
 
     content = header + strategy_block + "\n".join(day_blocks) + f"\n{divider}\n"
-    content += "_Reply in the daily approval channel to pick a variant for each post._"
+    content += "_Daily approval: reply `1` to post · `r hint` to regenerate · `skip` to skip_"
 
     msg_id = _send_long_message(channel_id, content)
     if msg_id:
