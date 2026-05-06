@@ -320,7 +320,7 @@ def send_comment_approval(
     comment_author: str,
     comment_text: str,
     suggested_reply: str,
-) -> None:
+) -> str | None:
     channel_id = _channel("DISCORD_COMMENTS_CHANNEL_ID")
 
     content = f"""💬 **NEW COMMENT** — approval needed
@@ -332,7 +332,51 @@ def send_comment_approval(
 
 Reply `post` to send · `edit: [new text]` to customise · `skip` to ignore"""
 
-    _send_message(channel_id, content[:2000])
+    return _send_message(channel_id, content[:2000])
+
+
+def wait_for_comment_approval(
+    message_id: str,
+    suggested_reply: str,
+    timeout_minutes: int = 25,
+) -> dict:
+    """Poll Discord #comments channel for a reply to a comment approval message.
+
+    Returns:
+      {"action": "post",  "text": str}  — post this text as the LinkedIn reply
+      {"action": "skip"}                — user skipped
+      {"action": "timeout"}             — no response within timeout
+    """
+    channel_id = _channel("DISCORD_COMMENTS_CHANNEL_ID")
+    if not channel_id or not message_id:
+        return {"action": "timeout"}
+
+    deadline = time.time() + timeout_minutes * 60
+    checks   = 0
+
+    while time.time() < deadline:
+        if checks > 0:
+            mins_left = int((deadline - time.time()) / 60)
+            print(f"  [discord] Waiting for comment approval... ({mins_left}min left)")
+            time.sleep(APPROVAL_POLL_INTERVAL)
+        checks += 1
+
+        for msg in reversed(_get_messages_after(channel_id, message_id)):
+            if msg.get("author", {}).get("bot"):
+                continue
+            text       = msg.get("content", "").strip()
+            text_lower = text.lower()
+
+            if text_lower == "post":
+                return {"action": "post", "text": suggested_reply}
+            if text_lower == "skip":
+                return {"action": "skip"}
+            if text_lower.startswith("edit:"):
+                custom = text[5:].strip()
+                if custom:
+                    return {"action": "post", "text": custom}
+
+    return {"action": "timeout"}
 
 
 def send_analytics_report(report_data: dict) -> None:

@@ -13,6 +13,9 @@ For each model in llm_client.MODELS this will:
 Run on a Sunday evening — won't touch LinkedIn or Discord.
 """
 
+import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from llm_client import MODELS, call_model
 
 PROMPT = "Reply with exactly 5 words about why small businesses need AI."

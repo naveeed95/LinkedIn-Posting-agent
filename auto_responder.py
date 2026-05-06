@@ -174,25 +174,61 @@ Reply:"""
 
 
 def queue_replies() -> None:
-    from discord_bot import send_comment_approval
+    from discord_bot import send_comment_approval, wait_for_comment_approval
+    from linkedin_poster import post_first_comment
 
     comments = fetch_unanswered_comments()
     if not comments:
         print("  [responder] No unanswered comments to process.")
         return
 
+    # Generate replies and send all to Discord first
+    pending = []
     for comment in comments:
         print(f"  [responder] Generating reply to: {comment['text'][:80]}...")
         suggested = generate_reply(comment["text"], post_context=f"Post URN: {comment['post_urn']}")
-        if suggested:
-            send_comment_approval(
-                comment_author=comment["author"],
-                comment_text=comment["text"],
-                suggested_reply=suggested,
-            )
+        if not suggested:
+            print("  [responder] Could not generate reply — skipping.")
+            continue
+        msg_id = send_comment_approval(
+            comment_author=comment["author"],
+            comment_text=comment["text"],
+            suggested_reply=suggested,
+        )
+        if msg_id:
+            pending.append({
+                "msg_id":       msg_id,
+                "comment_urn":  comment["comment_urn"],
+                "suggested":    suggested,
+                "preview":      comment["text"][:60],
+            })
             print("  [responder] Sent to Discord for approval.")
         else:
-            print("  [responder] Could not generate reply — skipping.")
+            print("  [responder] Discord not configured — skipping.")
+
+    if not pending:
+        return
+
+    # Poll Discord for responses and post approved replies to LinkedIn
+    print(f"  [responder] Waiting for approval of {len(pending)} comment(s)...")
+    for item in pending:
+        decision = wait_for_comment_approval(
+            message_id     = item["msg_id"],
+            suggested_reply= item["suggested"],
+            timeout_minutes= 25,
+        )
+        action = decision.get("action")
+        if action == "post":
+            reply_text = decision["text"]
+            print(f"  [responder] Posting reply to LinkedIn: {reply_text[:60]}...")
+            if post_first_comment(item["comment_urn"], reply_text):
+                print("  [responder] Reply posted successfully.")
+            else:
+                print("  [responder] LinkedIn reply failed.")
+        elif action == "skip":
+            print(f"  [responder] Skipped: {item['preview']}")
+        else:
+            print(f"  [responder] No response received for: {item['preview']}")
 
 
 if __name__ == "__main__":
