@@ -8,6 +8,8 @@ Templates:
   stat       — 3 slides: stat hook + insights + CTA
   comparison — 4 slides: hook + before + after + CTA
 """
+import os
+import platform
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -35,17 +37,41 @@ PAD      = 68
 
 LOGO_PATH  = Path(__file__).parent.parent / "TTT" / "Logo.jpg"
 OUTPUT_DIR = Path(__file__).parent / "output"
-FONT_DIR   = "C:/Windows/Fonts/"
+
+# Platform-aware font discovery. Each logical name maps to a list of real font
+# files to probe across known font directories. On GitHub Actions (Ubuntu) the
+# DejaVu / Liberation families are preinstalled; on Windows we keep Arial.
+_SYSTEM = platform.system()
+if _SYSTEM == "Windows":
+    FONT_DIRS = ["C:/Windows/Fonts/"]
+elif _SYSTEM == "Darwin":
+    FONT_DIRS = ["/Library/Fonts/", "/System/Library/Fonts/", "/System/Library/Fonts/Supplemental/"]
+else:
+    FONT_DIRS = [
+        "/usr/share/fonts/truetype/dejavu/",
+        "/usr/share/fonts/truetype/liberation/",
+        "/usr/share/fonts/truetype/freefont/",
+        "/usr/share/fonts/TTF/",
+    ]
+
+# Logical name → ordered candidate filenames. First match wins.
+_FONT_FALLBACKS = {
+    "arialbd.ttf": ["arialbd.ttf", "DejaVuSans-Bold.ttf",  "LiberationSans-Bold.ttf",    "FreeSansBold.ttf"],
+    "arial.ttf":   ["arial.ttf",   "DejaVuSans.ttf",       "LiberationSans-Regular.ttf", "FreeSans.ttf"],
+    "ariblk.ttf":  ["ariblk.ttf",  "DejaVuSans-Bold.ttf",  "LiberationSans-Bold.ttf",    "FreeSansBold.ttf"],
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _f(name: str, size: int) -> ImageFont.FreeTypeFont:
-    for fname in [name, "arialbd.ttf", "arial.ttf"]:
-        try:
-            return ImageFont.truetype(f"{FONT_DIR}{fname}", size)
-        except OSError:
-            continue
+    candidates = _FONT_FALLBACKS.get(name, [name, "arialbd.ttf", "arial.ttf"])
+    for fdir in FONT_DIRS:
+        for fname in candidates:
+            try:
+                return ImageFont.truetype(os.path.join(fdir, fname), size)
+            except OSError:
+                continue
     return ImageFont.load_default()
 
 

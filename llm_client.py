@@ -29,12 +29,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Provider clients ──────────────────────────────────────────────────────────
+# ── Provider clients (lazy) ───────────────────────────────────────────────────
+# Importing this module must NOT raise on a missing key — keeps unit tests
+# and other importers that only need MODELS / display_name() working without
+# GROQ_API_KEY. The Groq client is created on first dispatch.
 
-_groq_key = os.environ.get("GROQ_API_KEY", "")
-if not _groq_key:
-    raise EnvironmentError("GROQ_API_KEY is required but not set")
-_groq = Groq(api_key=_groq_key)
+_groq: Groq | None = None
+
+
+def _get_groq() -> Groq:
+    global _groq
+    if _groq is None:
+        key = os.environ.get("GROQ_API_KEY", "")
+        if not key:
+            raise EnvironmentError("GROQ_API_KEY is required but not set")
+        _groq = Groq(api_key=key)
+    return _groq
 
 # ── Model registry ────────────────────────────────────────────────────────────
 # Each entry is keyed by short id and describes display name, provider, and
@@ -226,7 +236,7 @@ def _dispatch(
     messages.append({"role": "user", "content": prompt})
 
     if provider == "groq":
-        client = _groq
+        client = _get_groq()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

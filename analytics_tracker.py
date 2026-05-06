@@ -28,14 +28,24 @@ LINKEDIN_STATS_URL = "https://api.linkedin.com/v2/organizationalEntityShareStati
 
 # ── Database setup ─────────────────────────────────────────────────────────────
 
+_db_initialized = False
+
+
 def _connect() -> sqlite3.Connection:
+    global _db_initialized
+    if not _db_initialized:
+        _init_db()
+        _db_initialized = True
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def _init_db() -> None:
-    with _connect() as conn:
+    # Bootstrap connection — bypass _connect() to avoid recursion through the
+    # initialization guard above.
+    conn = sqlite3.connect(DB_FILE)
+    try:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS posts (
                 id              INTEGER PRIMARY KEY,
@@ -80,9 +90,9 @@ def _init_db() -> None:
                 UNIQUE(hashtag, post_id)
             );
         """)
-
-
-_init_db()
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ── LinkedIn API helpers ───────────────────────────────────────────────────────

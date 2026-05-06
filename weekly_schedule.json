@@ -84,39 +84,41 @@
   "2026-05-04_strategy": {
     "domain": "AI Automation (no-code / low-code)",
     "focus_keywords": [
+      "AI automation tools",
       "no-code AI",
-      "low-code automation",
-      "SMB AI adoption"
+      "low-code workflows 2026",
+      "Zapier alternatives"
     ],
-    "posting_time": "9am PKT",
-    "rationale": "As SMB owners seek efficient solutions to streamline operations, AI automation is a timely and relevant topic, and posting at 9am PKT on a weekday maximizes visibility among the target B2B audience."
+    "content_pillar": "The single most urgent SMB pain point this domain solves this week is automating repetitive manual tasks to free up staff time and reduce labor costs.",
+    "posting_time": "8am PKT",
+    "rationale": "This domain is chosen because it appears in the context of trendiness in hiring and building AI data analyst, implying a need for efficient automation tools that can be set up by anyone, and it addresses the specific SMB pain point of wasting time on manual tasks, which is a major concern for businesses with limited staff and resources."
   },
   "2026-05-04": [
     {
       "day": "Monday",
-      "date": "2026-05-05",
+      "date": "2026-05-04",
       "topic": {
-        "title": "AI Isn't Just for Big Business",
-        "source_url": "https://www.getvms.com/ai-tools-for-small-business/",
-        "angle": "What if AI could automate 80% of your manual tasks, freeing you up to focus on growth?",
-        "research_context": "- [Tavily] AI for Small Business 2026: Tools, ROI & How to Start (Complete Guide): Adratech Systems Logo\n\n# AI for Small Business: The Complete 2026 Guide\n\nHow small businesses are using AI to save 20+ hours/month and boost revenue\n\nAI is no longer just for big corporations. In 2026, 68% of US small businesses use AI regularly, saving $500-2,000 per month and 20+ hours of work. The best part? Many powerful AI tools are free or under $20/month. This guide shows you exactly which \n- [Tavily] The AI Regulation Gap Is Becoming the Biggest Business Risk of 2026 | Times Square Chronicles: Large corporations are signaling caution through their actions. Firms like Microsoft and Meta continue to invest heavily in strategic areas, but at the same time, they are restructuring teams, reducing headcount in certain departments, and tightening budgets elsewhere. This isn’t panic it’s preparation. Companies aren’t reacting to a crisis; they’re positioning themselves for one that might still \n- [Tavily] AI for Small Business: 7 Game-Changing Solutions in 2026 | Kicks Digital Marketing: ## Getting Started with AI Solutions\n\nThe key to successful AI implementation for small businesses is starting small and scaling gradually. Begin with one area where you experience the most pain points—whether that's customer service, inventory management, or marketing automation.\n\nMost AI tools offer free trials or low-cost entry points, making it easy to test their effectiveness before committin\n- [Tavily] AI Adoption Trends in Q1 2026: We Analyzed 67M DNS Queries/Sec and 81M HTTP Requests to Map How AI Hype Becomes Real Adoption - TechnologyChecker.io: ### What percentage of companies are using AI?\n\nIt depends on how you define \"using.\" Vention's 2026 report puts it at 93% of companies using AI in some form, with 80% using it directly in operations. McKinsey's Global Survey says 72% have adopted at least one AI capability. HBR says 88% report regular use. Our Cloudflare Radar data adds a different dimension: ChatGPT alone ranks #11 globally for \n- [Tavily] Develop a 2026 AI Business strategy, what can AI do for Small Business | U.S. Small Business Administration: Resource Partner event\n\n## Event description\n\nThis class provides a practical, business-focused introduction to using artificial intelligence (AI) for small business. Participants will learn steps to developing an AI Strategy tailored to small and mid-sized businesses, including how to identify business goals that AI can support, generative AI vs automation AI and strategic best practices.\n\n### Fo"
+        "title": "AI Costs $23/month",
+        "source_url": "https://www.myaifrontdesk.com/blogs/unlock-growth-top-no-code-ai-tools-for-small-business-automation-in-2026",
+        "angle": "Debunks 'AI costs too much' myth",
+        "why": "Challenges the specific limiting belief that AI is expensive, perfect for Monday's purpose"
       },
       "format": "text",
-      "post_text": "What if AI automated 80% of your manual tasks?\n \nAI is no longer just for big corporations.\nIn 2026, 68% of US small businesses use AI regularly, saving $500-2,000 per month and 20+ hours of work.\nMany powerful AI tools are free or under $20/month, making it easy for small businesses to get started.\nThe key to successful AI implementation is starting small and scaling gradually, focusing on one area where you experience the most pain points.\n\n• Begin with customer service, inventory management, or marketing automation to see the biggest impact.\n• Most AI tools offer free trials or low-cost entry points, allowing you to test their effectiveness before committing.\n• 72% of companies have adopted at least one AI capability, and 88% report regular use, making AI a norm in business operations.\n\nThe insight here is that AI is not just a luxury for big businesses, but a necessity for small businesses to stay competitive.\nWhat's the one manual task that's eating up the most time in your business, and how could automating it change your growth trajectory?\nIf you're curious about how AI can help your business, let's discuss how to get started with the right tools and strategy.\n#AIforSmallBusiness #ArtificialIntelligence #SmallBusinessGrowth",
+      "post_text": null,
       "design_brief": null,
-      "status": "posted",
-      "post_urn": "urn:li:share:7457194476252561408",
-      "chosen_model": "llama-70b"
+      "status": "pending",
+      "post_urn": null
     },
     {
       "day": "Tuesday",
       "date": "2026-05-05",
       "topic": {
-        "title": "Top 7 AI Tools for Small Business",
-        "source_url": "https://www.gladly.ai/blog/best-ai-tools-for-small-businesses/",
-        "angle": "Discover the 7 AI tools that can save you 10 hours a week and increase productivity by 30%"
+        "title": "Notion AI Saves Time",
+        "source_url": "https://www.brixi.ai/blogs/best-ai-tools-for-smb-2026",
+        "angle": "Notion AI saves 6 hrs/week",
+        "why": "Spotlights a specific AI tool with measurable ROI, great for Tuesday's purpose"
       },
-      "format": "design",
+      "format": "text",
       "post_text": null,
       "design_brief": null,
       "status": "pending",
@@ -126,11 +128,12 @@
       "day": "Wednesday",
       "date": "2026-05-06",
       "topic": {
-        "title": "Step-by-Step Guide to AI Automation",
-        "source_url": "https://www.appitsoftware.com/blog/ai-for-automation-complete-guide-2026",
-        "angle": "Follow these 5 simple steps to automate repetitive tasks and reduce operational costs by 25%"
+        "title": "5-Step Automation",
+        "source_url": "https://aitoolkitpro.blog/no-code-ai-automation-2026/",
+        "angle": "5 steps to automate emails",
+        "why": "Gives a step-by-step process for solo founders to implement before Friday"
       },
-      "format": "design",
+      "format": "text",
       "post_text": null,
       "design_brief": null,
       "status": "pending",
@@ -140,11 +143,12 @@
       "day": "Thursday",
       "date": "2026-05-07",
       "topic": {
-        "title": "2026 AI Business Predictions",
-        "source_url": "https://www.pwc.com/us/en/tech-effect/ai-analytics/ai-predictions.html",
-        "angle": "Did you know that 80% of companies will adopt an enterprise-wide AI strategy in 2026, resulting in a 15% increase in revenue?"
+        "title": "AI Agents Cut Workload",
+        "source_url": "https://willdom.com/blog/cost-savings-with-ai-automation/",
+        "angle": "AI agents cut workload 43%",
+        "why": "Reports a data-driven AI development with direct SMB impact"
       },
-      "format": "design",
+      "format": "text",
       "post_text": null,
       "design_brief": null,
       "status": "pending",
@@ -154,9 +158,40 @@
       "day": "Friday",
       "date": "2026-05-08",
       "topic": {
-        "title": "The Surprising Truth About AI Adoption",
-        "source_url": "https://www.servicenow.com/community/japan-blog/why-ai-isn-t-delivering-business-impact-the-operating-model-for/ba-p/3508243",
-        "angle": "What if the biggest obstacle to AI adoption isn't the technology, but your company's operating model?"
+        "title": "Slowest Adopters Are Profitable",
+        "source_url": "https://thecrunch.io/ai-automation-for-small-business/",
+        "angle": "Slow adopters are most profitable",
+        "why": "Delivers a counterintuitive insight that reframes how SMB owners see AI adoption"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Saturday",
+      "date": "2026-05-09",
+      "topic": {
+        "title": "ChatGPT Report Hack",
+        "source_url": "https://cavestudy.com/top-10-ai-tools-to-boost-small-business-productivity-in-2026/",
+        "angle": "ChatGPT writes reports in 3 minutes",
+        "why": "Provides a fast AI tip that takes under 10 minutes to try"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Sunday",
+      "date": "2026-05-10",
+      "topic": {
+        "title": "Manual Task Automation",
+        "source_url": "https://getbob.ai/blog/best-ai-automation-agent-platforms-small-businesses",
+        "angle": "What's your most time-consuming task?",
+        "why": "Asks a question that gets SMB owners talking about AI in their own business"
       },
       "format": "text",
       "post_text": null,
