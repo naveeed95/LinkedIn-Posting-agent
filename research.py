@@ -86,13 +86,17 @@ def _make_topic(title: str, url: str, source: str, description: str = "", points
 
 def _is_ai_relevant(text: str) -> bool:
     keywords = (
-        "ai", "llm", "gpt", "claude", "gemini", "openai", "anthropic", "mistral",
-        "machine learning", "deep learning", "neural", "automation", "chatbot",
-        "language model", "generative", "diffusion", "transformer", "hugging",
-        "llama", "model", "agent", "rag", "fine-tun", "embedding", "inference",
+        "llm", "gpt", "claude", "gemini", "openai", "anthropic", "mistral",
+        "machine learning", "deep learning", "neural network", "automation", "chatbot",
+        "language model", "generative", "diffusion", "transformer", "hugging face",
+        "llama", "agent", "rag", "fine-tun", "embedding", "inference",
+        "artificial intelligence",
     )
     lower = text.lower()
-    return any(kw in lower for kw in keywords)
+    if any(kw in lower for kw in keywords):
+        return True
+    # Check "ai" as a whole word only — "aita", "afraid", "said" must not match
+    return bool(re.search(r'\bai\b', lower))
 
 
 # ── RSS fetchers ───────────────────────────────────────────────────────────────
@@ -287,51 +291,82 @@ def fetch_exa_similar(top_post_urls: list[str]) -> list[dict]:
     return items
 
 
-# ── Supadata YouTube (optional) ────────────────────────────────────────────────
+# ── YouTube broad search (via Tavily, no channel restrictions) ─────────────────
+# Searches all of YouTube for AI content relevant to SMB owners.
+# Falls back silently if TAVILY_API_KEY not set.
 
-AI_YOUTUBE_CHANNELS = [
-    ("Two Minute Papers", "UCbfYPyITQ-7l4upoX8nvctg"),
-    ("Lex Fridman",       "UCSHZKyawb77ixDdsGog4iWA"),
-    ("AI Explained",      "UCNJ1Ymd5yFuUPtn21xtRbbw"),
+YOUTUBE_AI_QUERIES = [
+    "site:youtube.com AI tools small business productivity 2026",
+    "site:youtube.com AI automation no-code workflow tutorial",
+    "site:youtube.com artificial intelligence business cost savings",
 ]
 
-def fetch_youtube_transcripts() -> list[dict]:
-    api_key = os.environ.get("SUPADATA_API_KEY", "")
+
+def fetch_youtube_search() -> list[dict]:
+    api_key = os.environ.get("TAVILY_API_KEY", "")
     if not api_key:
-        print("  [research] SUPADATA_API_KEY not set — skipping YouTube.")
+        print("  [research] TAVILY_API_KEY not set — skipping YouTube search.")
         return []
     try:
-        from supadata.client import Supadata
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=api_key)
     except ImportError:
-        print("  [research] supadata SDK not installed — skipping YouTube.")
+        print("  [research] tavily-python not installed — skipping YouTube search.")
         return []
 
-    client = Supadata(api_key=api_key)
-    items  = []
-    for channel_name, channel_id in AI_YOUTUBE_CHANNELS:
+    items = []
+    for query in YOUTUBE_AI_QUERIES:
         try:
-            video_ids_obj = client.youtube.channel.videos(id=channel_id, limit=2)
-            ids = (
-                video_ids_obj.videoIds
-                if hasattr(video_ids_obj, "videoIds")
-                else (video_ids_obj if isinstance(video_ids_obj, list) else [])
-            )
-            for vid in ids[:2]:
-                url = f"https://www.youtube.com/watch?v={vid}"
-                try:
-                    tr      = client.transcript(url=url, text=True)
-                    excerpt = tr.content[:400] if isinstance(getattr(tr, "content", None), str) else ""
-                except Exception:
-                    excerpt = ""
-                items.append(_make_topic(
-                    f"[YouTube/{channel_name}] {vid}",
-                    url,
-                    f"YouTube/{channel_name}",
-                    description=f"Transcript: {excerpt}",
-                ))
+            results = client.search(query, max_results=3, search_depth="basic")
+            for r in results.get("results", []):
+                url   = r.get("url", "")
+                title = r.get("title", "").strip()
+                if "youtube.com/watch" in url and title:
+                    items.append(_make_topic(title, url, "YouTube", r.get("content", "")[:300]))
         except Exception as e:
-            print(f"  [research] Supadata {channel_name} error: {e}")
-    print(f"  [research] YouTube: {len(items)} items")
+            print(f"  [research] YouTube search query failed: {e}")
+    print(f"  [research] YouTube search: {len(items)} videos")
+    return items
+
+
+# ── Reddit broad AI search (across all subreddits) ─────────────────────────────
+# Complements fetch_reddit() (subreddit-specific) with a wide Reddit search.
+
+REDDIT_AI_SEARCH_QUERIES = [
+    "AI tools small business productivity",
+    "artificial intelligence automation ROI save time",
+    "ChatGPT no-code workflow business",
+    "LLM cost efficiency 2026",
+]
+
+
+def fetch_reddit_ai_search(max_per_query: int = 5) -> list[dict]:
+    items = []
+    reddit_headers = {**HEADERS, "Accept": "application/json"}
+    for query in REDDIT_AI_SEARCH_QUERIES:
+        try:
+            resp = requests.get(
+                "https://www.reddit.com/search.json",
+                params={"q": query, "sort": "top", "t": "week", "limit": max_per_query},
+                headers=reddit_headers,
+                timeout=10,
+            )
+            if not resp.ok:
+                continue
+            for post in resp.json().get("data", {}).get("children", []):
+                d     = post.get("data", {})
+                title = d.get("title", "").strip()
+                url   = d.get("url", "") or f"https://reddit.com{d.get('permalink', '')}"
+                score = d.get("score", 0)
+                desc  = _strip_html(d.get("selftext", ""))[:200]
+                if title and _is_ai_relevant(title):
+                    items.append(_make_topic(title, url, "Reddit Search", desc,
+                                             points=score,
+                                             published_date=str(d.get("created_utc", ""))))
+        except Exception as e:
+            print(f"  [research] Reddit AI search '{query}' failed: {e}")
+        time.sleep(0.3)
+    print(f"  [research] Reddit broad AI search: {len(items)} items")
     return items
 
 
@@ -481,9 +516,11 @@ def fetch_trending_topics(
         print("  Fetching Exa similar content...")
         topics.extend(fetch_exa_similar(top_post_urls))
 
-    if os.environ.get("SUPADATA_API_KEY"):
-        print("  Fetching YouTube via Supadata...")
-        topics.extend(fetch_youtube_transcripts())
+    print("  Fetching YouTube (broad AI search via Tavily)...")
+    topics.extend(fetch_youtube_search())
+
+    print("  Fetching Reddit broad AI search (all subreddits)...")
+    topics.extend(fetch_reddit_ai_search())
 
     # Deduplicate by title prefix
     seen:   set[str]   = set()
