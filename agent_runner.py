@@ -177,9 +177,10 @@ Strict workflow:
 2. get_analytics_summary() — note best_hook_type and top_hashtags to use.
 3. research_topic(topic_title, keywords) — always research before generating.
 4. generate_post() — generate the post.
-5. score_post(post_text) — evaluate it.
-   - score < 65 and attempts < 3: generate_post(hint="more specific, add a stat or number") then score again.
-   - score >= 65: proceed to step 6.
+5. score_post(post_text) — evaluate it. The result includes a dynamic `threshold` based on past performance.
+   - score < threshold and attempts < 3: generate_post(hint from score_post advice) then score again.
+   - score >= threshold: proceed to step 6.
+   - score >= 80 is always excellent regardless of threshold.
 6. send_for_approval(post_text, score) — wait for human decision:
    - "post": publish_post(post_text, chosen_model)
    - "edit": publish_post(custom_text, chosen_model="human-edit")
@@ -199,7 +200,7 @@ def run_agent() -> None:
     """Agentic posting loop. Called from cmd_auto() in run.py."""
 
     from scheduler import get_today_slot, get_strategy, update_slot
-    from content_generator import DAY_FORMAT, engagement_scorer, generate_text_post_variants
+    from content_generator import engagement_scorer, generate_text_post_variants
     from research import fetch_deep_topic_research
     from linkedin_poster import post_first_comment, post_to_linkedin
     from analytics_tracker import get_performance_summary, get_top_hashtags, log_post
@@ -239,7 +240,6 @@ def run_agent() -> None:
         state["strategy"] = get_strategy()
         state["topic"] = slot.get("topic") or {}
         state["day"] = slot["day"]
-        day_idx = _WEEKDAYS.index(slot["day"]) if slot["day"] in _WEEKDAYS else 0
 
         return {
             "status": "ok",
@@ -247,7 +247,7 @@ def run_agent() -> None:
             "date": slot["date"],
             "topic_title": state["topic"].get("title", ""),
             "angle": state["topic"].get("angle", ""),
-            "format": DAY_FORMAT.get(day_idx, "text"),
+            "format": slot.get("format") or "text",
             "focus_keywords": state["strategy"].get("focus_keywords", []),
             "domain": state["strategy"].get("domain", "AI"),
         }
@@ -319,11 +319,16 @@ def run_agent() -> None:
         except Exception:
             past = {}
         score = engagement_scorer(post_text, past)
+        # Threshold derived from past performance: 90% of recent avg, clamped 55–75.
+        # Falls back to 62 when no history exists yet.
+        recent_avg = past.get("recent_avg_score", 0)
+        threshold = max(55, min(75, int(recent_avg * 0.9))) if recent_avg > 0 else 62
         return {
             "score": score,
-            "verdict": "excellent" if score >= 80 else "good" if score >= 65 else "weak",
-            "ready_to_send": score >= 65,
-            "advice": "" if score >= 65 else "Regenerate with a more specific hook or concrete stat.",
+            "threshold": threshold,
+            "verdict": "excellent" if score >= 80 else "good" if score >= threshold else "weak",
+            "ready_to_send": score >= threshold,
+            "advice": "" if score >= threshold else f"Score {score} below threshold {threshold}. Try a more specific hook or add a concrete stat.",
         }
 
     def tool_send_for_approval(post_text: str, score: int = 0) -> dict:

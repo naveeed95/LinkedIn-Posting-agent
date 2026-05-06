@@ -14,7 +14,6 @@ import sys
 from datetime import date, datetime
 
 from content_generator import (
-    DAY_FORMAT,
     choose_weekly_strategy,
     engagement_scorer,
     generate_carousel_content,
@@ -195,8 +194,7 @@ def cmd_post(preview: bool = False, force: bool = False):
         return
 
     topic = slot["topic"]
-    _weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    fmt = DAY_FORMAT.get(_weekdays.index(slot["day"]) if slot["day"] in _weekdays else 0, "text")
+    fmt = slot.get("format") or "text"
 
     print(f"Day:    {slot['day']} {slot['date']}")
     print(f"Topic:  {topic['title']}")

@@ -1,108 +1,44 @@
 """
-Fetches latest LinkedIn algorithm rules from free public sources.
-Caches to cache/linkedin_rules.json for 7 days.
+Fetches latest LinkedIn algorithm rules dynamically via Tavily search.
+Caches to cache/linkedin_rules.json for 24 hours.
 
 Exports:
-  fetch_rules()             -> dict of current rules + recent updates
+  fetch_rules()             -> dict with rules_text + sources
   build_rules_prompt(data)  -> str to inject into LLM system prompt
 """
 
 import json
 import os
-import re
 import tempfile
-import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 CACHE_FILE = Path(__file__).parent / "cache" / "linkedin_rules.json"
-CACHE_TTL_DAYS = 7
-HEADERS = {"User-Agent": "TheTechTutors-PostingAgent/1.0"}
-ATOM = "http://www.w3.org/2005/Atom"
+CACHE_TTL_HOURS = 24
 
-RULES_RSS_FEEDS = [
-    ("SocialMediaExaminer", "https://www.socialmediaexaminer.com/tag/linkedin/feed/"),
-    ("Buffer Blog",         "https://buffer.com/resources/feed/"),
-    ("Search Engine Journal","https://www.searchenginejournal.com/feed/"),
-    ("Later Blog",          "https://later.com/blog/feed/"),
+_QUERIES = [
+    "LinkedIn algorithm rules best practices 2026",
+    "LinkedIn post reach engagement tips 2026",
+    "LinkedIn algorithm changes latest update 2026",
+    "LinkedIn hashtag character limit content format 2026",
+    "LinkedIn creator engagement strategy 2026",
 ]
 
-REDDIT_URL = "https://www.reddit.com/r/linkedin/top.json?t=week&limit=20"
 
-# Only pass through Reddit posts about algorithm/posting strategy — not user complaints
-_REDDIT_SIGNAL_KEYWORDS = (
-    "algorithm", "reach", "impression", "engagement", "post", "content",
-    "visibility", "viral", "follower", "hashtag", "feed", "newsletter",
-    "creator", "growth", "analytics", "strategy", "tip", "hack", "update",
-    "change", "ban", "penali", "boost", "suppress", "organic",
-)
-
-BASELINE_RULES = {
-    "character_limit": 3000,
-    "optimal_post_length": "1200-1800 chars",
-    "link_in_body": False,
-    "hashtag_limit": 5,
-    "optimal_hashtags": "3-5 placed at end",
-    "automated_comments": "banned as of April 2026",
-    "line_breaks": "one idea per line",
-    "ai_citation_active": True,
-    "best_post_times": "Tue-Thu 8-10am local time",
-    "image_posts": "1.91:1 ratio or 1:1 square performs best",
-    "first_comment_links": "post source URLs in first comment, never in body",
-    "engagement_window": "first 60-90 minutes determine reach",
-    "poll_reach": "polls get 3-5x more impressions than text",
-    "carousel_reach": "PDF carousels get highest dwell time",
-}
-
-
-def _strip_html(text: str) -> str:
-    return re.sub(r"<[^>]+>", "", text or "").strip()
-
-
-def _fetch_rss_updates(name: str, url: str, max_items: int = 3) -> list[str]:
+def _fetch_query(query: str) -> list[dict]:
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY", ""))
+        results = client.search(query, max_results=3, search_depth="advanced")
+        return results.get("results", [])
     except Exception as e:
-        print(f"  [rules] {name} feed failed: {e}")
+        print(f"  [rules] Tavily query failed ({query[:50]}): {e}")
         return []
-
-    entries = list(root.iter("item")) or list(root.iter(f"{{{ATOM}}}entry"))
-    updates = []
-    for entry in entries[:max_items]:
-        title = _strip_html(
-            entry.findtext("title") or entry.findtext(f"{{{ATOM}}}title") or ""
-        )
-        if title and "linkedin" in title.lower():
-            updates.append(f"[{name}] {title}")
-    return updates
-
-
-def _fetch_reddit_updates(max_items: int = 5) -> list[str]:
-    try:
-        resp = requests.get(
-            REDDIT_URL,
-            headers={**HEADERS, "Accept": "application/json"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        posts = resp.json().get("data", {}).get("children", [])
-    except Exception as e:
-        print(f"  [rules] Reddit r/linkedin failed: {e}")
-        return []
-
-    updates = []
-    for post in posts[:max_items]:
-        title = post.get("data", {}).get("title", "").strip()
-        score = post.get("data", {}).get("score", 0)
-        title_lower = title.lower()
-        is_signal = any(kw in title_lower for kw in _REDDIT_SIGNAL_KEYWORDS)
-        if title and score > 5 and is_signal:
-            updates.append(f"[Reddit r/linkedin] {title}")
-    return updates
 
 
 def _load_cache() -> dict | None:
@@ -112,21 +48,20 @@ def _load_cache() -> dict | None:
         with open(CACHE_FILE, encoding="utf-8") as f:
             data = json.load(f)
         fetched_at = datetime.fromisoformat(data["fetched_at"])
-        if datetime.now() - fetched_at < timedelta(days=CACHE_TTL_DAYS):
+        if datetime.now() - fetched_at < timedelta(hours=CACHE_TTL_HOURS):
             return data
     except Exception:
         pass
     return None
 
 
-def _save_cache(rules: dict, updates: list[str]) -> None:
+def _save_cache(rules_text: str, sources: list[dict]) -> None:
     CACHE_FILE.parent.mkdir(exist_ok=True)
     payload = {
         "fetched_at": datetime.now().isoformat(),
-        "rules": rules,
-        "recent_updates": updates,
+        "rules_text": rules_text,
+        "sources": sources,
     }
-    # Atomic write — see scheduler.save_schedule for rationale.
     fd, tmp_path = tempfile.mkstemp(
         prefix=CACHE_FILE.name + ".",
         suffix=".tmp",
@@ -149,52 +84,64 @@ def _save_cache(rules: dict, updates: list[str]) -> None:
 def fetch_rules() -> dict:
     cached = _load_cache()
     if cached:
-        print("  [rules] Using cached LinkedIn rules (< 7 days old).")
+        print("  [rules] Using cached LinkedIn rules (< 24h old).")
         return cached
 
-    print("  [rules] Fetching latest LinkedIn algorithm updates...")
-    updates: list[str] = []
+    if not os.environ.get("TAVILY_API_KEY"):
+        print("  [rules] TAVILY_API_KEY not set — skipping rules fetch.")
+        return {}
 
-    for name, url in RULES_RSS_FEEDS:
-        updates.extend(_fetch_rss_updates(name, url))
+    print("  [rules] Fetching latest LinkedIn algorithm rules via Tavily...")
+    all_results: list[dict] = []
 
-    updates.extend(_fetch_reddit_updates())
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {ex.submit(_fetch_query, q): q for q in _QUERIES}
+        for fut in as_completed(futures):
+            all_results.extend(fut.result())
 
-    rules = dict(BASELINE_RULES)
-    _save_cache(rules, updates)
-    print(f"  [rules] Fetched {len(updates)} recent LinkedIn updates. Cached.")
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for r in all_results:
+        url = r.get("url", "")
+        if url and url not in seen:
+            unique.append(r)
+            seen.add(url)
+
+    sources = [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "content": r.get("content", "")[:500],
+        }
+        for r in unique[:12]
+    ]
+    rules_text = "\n\n".join(
+        f"[{r.get('title', '')}]\n{r.get('content', '')[:400]}"
+        for r in unique[:10]
+    )
+
+    _save_cache(rules_text, sources)
+    print(f"  [rules] Fetched {len(unique)} LinkedIn algorithm sources. Cached 24h.")
 
     return {
         "fetched_at": datetime.now().isoformat(),
-        "rules": rules,
-        "recent_updates": updates,
+        "rules_text": rules_text,
+        "sources": sources,
     }
 
 
 def build_rules_prompt(data: dict) -> str:
-    rules = data.get("rules", BASELINE_RULES)
-    updates = data.get("recent_updates", [])
+    rules_text = data.get("rules_text", "")
+    sources = data.get("sources", [])
+    if not rules_text:
+        return ""
 
+    source_titles = ", ".join(s["title"] for s in sources[:5] if s.get("title"))
     lines = [
-        "── CURRENT LINKEDIN ALGORITHM RULES ──────────────────────",
-        f"• Character limit: {rules['character_limit']} (optimal: {rules['optimal_post_length']})",
-        f"• Links in post body: {'ALLOWED' if rules['link_in_body'] else 'PENALISED — put source URL in first comment only'}",
-        f"• First comment: {rules.get('first_comment_links', 'post source URLs in first comment, never in body')}",
-        f"• Hashtags: {rules['optimal_hashtags']} (max {rules['hashtag_limit']})",
-        f"• Automated comments: {rules['automated_comments']}",
-        f"• Line breaks: {rules['line_breaks']}",
-        f"• Best posting times: {rules['best_post_times']}",
-        f"• Engagement window: {rules['engagement_window']}",
-        f"• Poll reach: {rules.get('poll_reach', 'polls get 3-5x more impressions than text')}",
-        f"• Carousel reach: {rules.get('carousel_reach', 'PDF carousels get highest dwell time')}",
-        f"• AI citations: {'LinkedIn content now indexed by ChatGPT — write with authority' if rules.get('ai_citation_active') else 'standard'}",
-        "──────────────────────────────────────────────────────────",
+        "── CURRENT LINKEDIN ALGORITHM RULES (fetched today) ──────────",
+        rules_text[:2000],
+        "──────────────────────────────────────────────────────────────",
     ]
-
-    if updates:
-        lines.append("\nRecent LinkedIn algorithm news (factor into your post strategy):")
-        for u in updates[:5]:
-            lines.append(f"  • {u}")
-        lines.append("")
-
+    if source_titles:
+        lines.append(f"Sources: {source_titles}")
     return "\n".join(lines)

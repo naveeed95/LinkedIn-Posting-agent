@@ -6,15 +6,19 @@ Fully automated LinkedIn content engine for **The Tech Tutors** company page. Re
 
 ```
 Weekly plan (Sunday 6pm PKT)
-  └─ Research trending AI topics → LLM picks 7-day strategy → plan sent to Discord
+  └─ Research trending AI topics
+     → LLM derives domain freely from headlines (no hardcoded list)
+     → LLM plans 7-day content strategy using live LinkedIn algorithm rules
+     → Plan sent to Discord #weekly-plan
 
 Daily post (1pm PKT)
-  └─ Groq agent loop:
-       get_today_slot → get_analytics → research_topic → generate_post
-       → score_post → Discord approval → publish_post → log analytics
+  └─ Groq agent loop (Llama 3.3 70B tool-use):
+       get_today_slot → get_analytics → research_topic + fetch fresh LinkedIn rules
+       → generate_post → score_post (dynamic threshold) → Discord approval
+       → publish_post → log analytics
 ```
 
-The daily flow is **agentic** — Llama 3.3 70B orchestrates its own tool calls via Groq's function-calling API. It decides when to research more, when a post score is good enough, and how to handle approval responses.
+The daily flow is **agentic** — Llama 3.3 70B orchestrates its own tool calls via Groq's function-calling API. Day strategies are decided dynamically each week by the LLM based on live LinkedIn algorithm rules fetched via Tavily — nothing is hardcoded.
 
 ## Stack
 
@@ -23,7 +27,7 @@ The daily flow is **agentic** — Llama 3.3 70B orchestrates its own tool calls 
 | LLM / Agent | Groq (Llama 3.3 70B + Llama 3.1 8B) |
 | Posting target | LinkedIn Company Page (UGC API) |
 | Approval UX | Discord HTTP API (no gateway) |
-| Research | Tavily, Exa, Reddit, HN, RSS, Supadata |
+| Research + Rules | Tavily, Exa, Reddit, HN, RSS, Supadata |
 | Analytics | SQLite + Google Sheets |
 | Scheduler | GitHub Actions cron |
 
@@ -60,8 +64,8 @@ DISCORD_ANALYTICS_CHANNEL_ID=
 DISCORD_COMMENTS_CHANNEL_ID=
 DISCORD_PLAN_CHANNEL_ID=
 
-# Optional research
-TAVILY_API_KEY=
+# Optional research + rules (strongly recommended)
+TAVILY_API_KEY=        # used for topic research AND live LinkedIn algorithm rules
 EXA_API_KEY=
 SUPADATA_API_KEY=
 
@@ -79,7 +83,7 @@ GITHUB_REPO=owner/repo
 
 | Command | What it does |
 |---------|-------------|
-| `python run.py plan` | Research + plan Mon–Sun, send to Discord |
+| `python run.py plan` | Research + plan Mon–Sun dynamically, send to Discord |
 | `python run.py` | Interactive: generate, pick variant, publish |
 | `python run.py auto` | Headless agentic loop (GitHub Actions) |
 | `python run.py --preview` | Generate only, no publish |
@@ -96,7 +100,7 @@ GITHUB_REPO=owner/repo
 | Workflow | Schedule (PKT) | Purpose |
 |----------|---------------|---------|
 | `daily_post.yml` | 1pm daily | Agentic post generation + publishing |
-| `weekly_plan.yml` | 6pm Sunday | Research + plan next 7 days |
+| `weekly_plan.yml` | 6pm Sunday | Research + dynamic 7-day plan |
 | `weekly_report.yml` | 8pm Sunday | Analytics summary → Discord + Sheets |
 | `analytics.yml` | 9am + 7pm | Poll LinkedIn metrics for recent posts |
 | `comment_reply.yml` | Every 2 hours | Comment reply suggestions → Discord |
@@ -117,9 +121,9 @@ Reply in `#approvals` channel:
 ## Project structure
 
 ```
-agent_runner.py            # Groq tool-use agent loop (daily posting)
+agent_runner.py            # Groq tool-use agent loop (8 tools, daily posting)
 run.py                     # CLI entrypoint
-content_generator.py       # Brand voice, prompts, generation, quality fix
+content_generator.py       # Brand voice, prompts, dynamic generation + strategy
 llm_client.py              # Groq multi-model router
 research.py                # Tavily, Exa, Reddit, HN, RSS, Supadata
 linkedin_poster.py         # LinkedIn UGC API — post, upload, stats
@@ -127,7 +131,7 @@ discord_bot.py             # Discord HTTP API — approvals, reports
 scheduler.py               # weekly_schedule.json read/write
 analytics_tracker.py       # SQLite analytics, Google Sheets export
 auto_responder.py          # LinkedIn comment reply suggestions
-linkedin_rules_fetcher.py  # LinkedIn algorithm rules cache (7-day TTL)
+linkedin_rules_fetcher.py  # Live LinkedIn algorithm rules via Tavily (24h cache)
 ```
 
 ## One-time LinkedIn OAuth setup

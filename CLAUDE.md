@@ -4,12 +4,12 @@ Guidance for Claude Code agents working in this repo.
 
 ## What this is
 
-LinkedIn posting agent for **The Tech Tutors** — fully automated content engine that researches AI/SMB topics, generates text posts, routes them through Discord for human approval, then publishes to a LinkedIn **company page**. Runs 7 days/week via GitHub Actions cron at 1pm PKT.
+LinkedIn posting agent for **The Tech Tutors** — fully automated content engine that researches AI/SMB topics, generates text posts via an agentic Groq tool-use loop, routes them through Discord for human approval, then publishes to a LinkedIn **company page**. Runs 7 days/week via GitHub Actions cron at 1pm PKT.
 
 ## Stack
 
 - **Language:** Python 3.11
-- **LLM:** Groq (Llama 3.3 70B + Llama 3.1 8B) via `llm_client.py` router
+- **LLM / Agent:** Groq (Llama 3.3 70B + Llama 3.1 8B) via `llm_client.py` router; agentic loop in `agent_runner.py`
 - **Posting target:** LinkedIn Company Page only (`LINKEDIN_ORG_URN` required, personal posting disabled in `linkedin_poster._author_urn`)
 - **Approval UX:** Discord HTTP API (no gateway/websocket — text message polling only, no reactions)
 - **Storage:** SQLite (`performance.db`) + JSON (`weekly_schedule.json`) + JSON cache (`cache/linkedin_rules.json`)
@@ -24,7 +24,7 @@ LinkedIn posting agent for **The Tech Tutors** — fully automated content engin
 | `python run.py` | Interactive: generate today's post, choose variant, publish. |
 | `python run.py --preview` | Generate but do not publish. Auto-picks variant 1. |
 | `python run.py --test` | Force-generate even if no slot matches today. |
-| `python run.py auto` | Headless: generate → Discord approval → publish. Used by Actions. |
+| `python run.py auto` | Headless agentic loop (agent_runner.py). Used by Actions. |
 | `python run.py week` | Show this week's 7-day schedule. |
 | `python run.py stats` | Engagement stats for posted slots. |
 | `python linkedin_auth.py` | One-time OAuth flow. Writes tokens + org URN to `.env`. |
@@ -38,6 +38,7 @@ LinkedIn posting agent for **The Tech Tutors** — fully automated content engin
 ## File map
 
 ```
+agent_runner.py            # Groq tool-use agentic loop (8 tools, daily posting)
 run.py                     # CLI entrypoint, all command flows
 content_generator.py       # Brand voice, prompts, variant gen, quality fix, strategy
 llm_client.py              # Multi-model router (Groq), retries, fallback, parallel variants
@@ -46,7 +47,7 @@ designer.py                # Pillow → 5-slide 1080x1080 carousel PDF (disabled
 linkedin_poster.py         # UGC post, asset upload, document upload, first comment, stats
 linkedin_auth.py           # OAuth: localhost callback, state/CSRF, token + org URN to .env
 token_refresher.py         # Refresh token; encrypt and PUT to GitHub secrets
-linkedin_rules_fetcher.py  # Cached LinkedIn algorithm rules (7-day TTL, RSS + Reddit)
+linkedin_rules_fetcher.py  # LinkedIn algorithm rules via Tavily search (24h TTL cache)
 analytics_tracker.py       # SQLite schema, log_post, poll_metrics, summary, Sheets export
 discord_bot.py             # HTTP API: approval messages, polling for replies, reports
 auto_responder.py          # LinkedIn comment reply suggestions → Discord queue
@@ -58,11 +59,11 @@ test_llm.py                # Smoke test for Groq models
   weekly_report.yml        # Weekly analytics report to Discord + Sheets
   analytics.yml            # Daily metrics poll for recent posts
   comment_reply.yml        # Auto-responder for LinkedIn comments
-  rules_update.yml         # Refresh LinkedIn rules cache weekly
+  rules_update.yml         # Refresh LinkedIn rules cache
   token_refresh.yml        # Rotate LinkedIn access token monthly
 weekly_schedule.json       # State: per-week 7-day slots + strategy (Mon–Sun)
 performance.db             # SQLite: posts, metrics, topics_history, hashtag_metrics
-cache/linkedin_rules.json  # Algorithm rules cache (7-day TTL)
+cache/linkedin_rules.json  # Algorithm rules cache (24h TTL, Tavily-fetched)
 output/                    # Generated PDFs / PNGs (gitignored)
 ```
 
@@ -90,9 +91,9 @@ output/                    # Generated PDFs / PNGs (gitignored)
 - `GITHUB_REPO` — `owner/name`.
 
 **Optional research:**
-- `TAVILY_API_KEY` — semantic search; queries dynamically generated from weekly domain
+- `TAVILY_API_KEY` — semantic search for topics AND LinkedIn algorithm rules fetch
 - `EXA_API_KEY` — find similar content to top past posts
-- `SUPADATA_API_KEY` — YouTube transcripts (Matt Wolfe, Two Minute Papers, Karpathy)
+- `SUPADATA_API_KEY` — YouTube transcripts
 
 **Optional reporting:**
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — base64-encoded service account JSON.
@@ -107,48 +108,43 @@ output/                    # Generated PDFs / PNGs (gitignored)
 1. Quick pre-fetch — RSS feeds + HN only (~45 topics, no API key needed)
          ↓
 2. choose_weekly_strategy(trending_sample=top15)
-   LLM picks domain grounded in REAL trending headlines (not just guessing)
+   LLM derives domain FREELY from trending headlines — no hardcoded domain list.
    Returns: domain, content_pillar, focus_keywords, posting_time, rationale
          ↓
 3. fetch_trending_topics(domain=..., focus_keywords=...)
-   All sources run. Tavily uses dynamic domain-aware queries (not static hardcoded).
+   All sources run. Tavily uses dynamic domain-aware queries.
    Topics scored: smb_bonus=100, domain_bonus=60, kw_bonus=40, virality=log2(pts)*3
-   SMB-relevant Tavily articles (~140) always outrank viral Reddit memes (~40).
          ↓
 4. plan_weekly_posts(topics, strategy=strategy)
-   7 slots Mon–Sun. Each day has strict per-day criteria (PURPOSE / ANGLE MUST /
-   BEST TOPIC FIT / SCORING BONUS / ANGLE EXAMPLE / REJECT IF).
+   7 slots Mon–Sun. LLM decides angle + content style for EACH day dynamically,
+   guided by live LinkedIn algorithm rules (Tavily-fetched) injected in system prompt.
    Returns: title, source_url, angle, format, score, why per slot.
          ↓
 5. init_week(slots) → weekly_schedule.json
 6. send_weekly_plan() → Discord #weekly-plan (DISCORD_PLAN_CHANNEL_ID)
 ```
 
-### Day strategy (all text format)
+### Day strategy — fully dynamic
 
-| Day | Purpose | Angle must include |
-|-----|---------|-------------------|
-| Mon | Challenge a limiting belief about AI cost/complexity | Specific belief + counter-fact with number |
-| Tue | Spotlight one AI tool with measurable ROI | Tool name + time/money saved + price point |
-| Wed | Step-by-step process a solo founder can implement | Process name + step count + time to implement |
-| Thu | Data-driven AI development with direct SMB impact | Specific stat (%, $, hrs) + SMB implication |
-| Fri | Counterintuitive insight that reframes AI adoption | Surprising truth + who it affects + implication |
-| Sat | Quick AI tip/hack under 10 minutes | Shortcut name + time to do + problem solved |
-| Sun | Conversation-starting question | Specific question inviting personal business experience |
+Day strategies are **not hardcoded**. During weekly planning the LLM:
+- Reads live LinkedIn algorithm rules fetched via Tavily (injected into system prompt)
+- Reviews trending topics and past performance analytics
+- Decides angle, hook style, and content type for each day
+- Varies content mix (insights, how-tos, tools, stats, questions, opinions) to avoid repetition
 
-Defined in `content_generator.DAY_STRATEGY` and `DAY_FORMAT` (all `"text"`).
-**Always derive format from `DAY_FORMAT[day_index]`, never from `slot["format"]`** — slot field may be stale from old planning runs.
+`slot["format"]` set during planning is the authoritative source for post format — read it directly. There is no `DAY_FORMAT` or `DAY_STRATEGY` constant.
 
 ### Daily post flow (`python run.py auto`)
 
 ```
-get_today_slot()
-  → fetch_deep_topic_research(topic_title, focus_keywords)  # targeted Tavily + HN + Reddit
-  → generate_text_post_variants(topic)                      # Llama 3.3 70B
-  → _fix_post_quality()                                     # strip banned words
-  → send_approval_message() → wait_for_approval(120 min)
-  → post_to_linkedin() → post_first_comment()
-  → log_post() → send_posted_confirmation()
+agent_runner.run_agent()  ← Groq Llama 3.3 70B tool-use loop
+  → get_today_slot()
+  → get_analytics_summary()
+  → research_topic()       # Tavily + HN + Reddit; also fetches fresh LinkedIn rules
+  → generate_post()        # Llama 3.3 70B, live rules injected
+  → score_post()           # dynamic threshold (90% of recent_avg, clamped 55–75, fallback 62)
+  → send_for_approval()    # Discord 120-min wait
+  → publish_post()         # post_to_linkedin + first comment + log_post
 ```
 
 Discord approval commands (reply in #approvals channel):
@@ -158,9 +154,7 @@ Discord approval commands (reply in #approvals channel):
 - `skip` — log slot as skipped
 
 ### LinkedIn rules injection
-`linkedin_rules_fetcher.fetch_rules()` fetches from SocialMediaExaminer, Buffer Blog, Search Engine Journal RSS + Reddit r/linkedin (signal-only filter — user complaints and off-topic posts discarded). Cached 7 days. Injected into the system prompt for ALL LLM calls: post generation, strategy selection, and weekly planning via `_generate()`.
-
-Reddit filter: only posts with keywords like `algorithm / reach / engagement / strategy / tip / visibility` pass through.
+`linkedin_rules_fetcher.fetch_rules()` runs 5 parallel Tavily queries about current LinkedIn algorithm rules and best practices. Results cached 24 hours in `cache/linkedin_rules.json`. Injected into system prompt for ALL LLM calls via `_generate()`. If `TAVILY_API_KEY` is missing, rules injection is silently skipped — posts still generate without it.
 
 ### Research scoring
 ```python
@@ -182,7 +176,7 @@ Schema:
         "title": "AI Isn't Just for Big Business",
         "source_url": "https://example.com/article",
         "angle": "Most SMB owners think AI costs $500/month. The average is now $23.",
-        "why": "Challenges the limiting belief that AI is too expensive for SMBs"
+        "why": "LLM chose this angle based on trending headlines + LinkedIn rules"
       },
       "format": "text",
       "post_text": null,
@@ -193,10 +187,10 @@ Schema:
     }
   ],
   "2026-05-04_strategy": {
-    "domain": "AI Automation (no-code / low-code)",
-    "content_pillar": "SMB owners need to automate repetitive tasks without coding knowledge",
-    "focus_keywords": ["no-code automation 2026", "low-code ai tools", "small business productivity"],
-    "posting_time": "1pm PKT",
+    "domain": "AI invoice automation for freelancers",
+    "content_pillar": "Solo founders waste 4hrs/week on invoicing that AI handles in minutes",
+    "focus_keywords": ["ai invoice automation 2026", "freelancer ai tools", "small business billing ai"],
+    "posting_time": "8am PKT",
     "rationale": "..."
   }
 }
@@ -208,11 +202,14 @@ Schema:
 ### Banned-word quality fix
 Every post variant runs through `_fix_post_quality` — Llama 70B pass that strips banned words (`delve`, `leverage`, `synergy`, `game-changer`, `revolutionary`, `cutting-edge`, etc.), normalises hashtags to 3–5 at end only, removes URLs from post body. Never skip this pass — banned words cause LinkedIn algorithm penalty.
 
+### Engagement score threshold
+`agent_runner.tool_score_post` computes a dynamic threshold: 90% of `recent_avg_score` from analytics, clamped 55–75. Falls back to 62 when no posting history exists. Agent regenerates if score is below threshold (max 3 attempts total).
+
 ## GitHub Actions workflows
 
 | Workflow | Cron (UTC) | PKT | What it does |
 |----------|-----------|-----|-------------|
-| `daily_post.yml` | `0 8 * * *` | 1pm daily | Generate → Discord approval → post |
+| `daily_post.yml` | `0 8 * * *` | 1pm daily | Agentic generate → Discord approval → post |
 | `weekly_plan.yml` | `0 13 * * 0` | 6pm Sunday | Research → plan 7 days → Discord |
 | `weekly_report.yml` | Weekly | — | Analytics summary → Discord + Sheets |
 | `analytics.yml` | Daily | — | Poll LinkedIn metrics for recent posts |
@@ -223,13 +220,13 @@ Every post variant runs through `_fix_post_quality` — Llama 70B pass that stri
 Artifact persistence:
 - `performance-db` — SQLite analytics DB (90-day retention)
 - `weekly-schedule` — current week's 7-slot state (90-day retention)
-- `linkedin-rules` — algorithm rules cache (7-day retention)
+- `linkedin-rules` — algorithm rules cache (1-day retention)
 
 Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all workflows that touch the DB or schedule artifact.
 
 ## Known production gotchas
 
-1. **Designer fonts** — `designer.py:46` hardcoded to `C:/Windows/Fonts/`. Falls back to bitmap font on Linux (GitHub Actions). Carousels disabled in production (`DAY_FORMAT` all-text) so this doesn't fire currently.
+1. **Designer fonts** — `designer.py:46` hardcoded to `C:/Windows/Fonts/`. Falls back to bitmap font on Linux (GitHub Actions). Carousels are text-only in production so this doesn't fire currently.
 2. **`performance.db` lives in artifacts** — 90-day retention, no external backup. Failed upload loses analytics history.
 3. **Supadata channel IDs stale** — Matt Wolfe and Karpathy YouTube channel IDs in `research.py` return "channel does not exist". Update or remove those entries.
 4. **Hacker News** — returning 0 results in recent runs. Check if API query needs updating or if rate-limited.
@@ -244,7 +241,7 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 - All `print` lines prefixed `[area]` (e.g. `[research]`, `[discord]`, `[content]`, `[llm]`, `[rules]`) for grep-ability.
 - `BRAND_CONTEXT` and `WRITING_SYSTEM` in `content_generator.py` are source of truth for brand voice. Never inline overrides — use `system_extra` parameter on `_generate()`.
 - Brand colours in `designer.py:16-30` — modify both modern and legacy aliases together.
-- Format always derived from `DAY_FORMAT[day_index]`, never from `slot["format"]` field.
+- Post format comes from `slot["format"]` set at planning time — read it directly. No `DAY_FORMAT` constant exists.
 - `auto_responder.fetch_recent_post_urns` — always check `isinstance(week_slots, list)` before iterating schedule values (strategy entries are dicts, not lists).
 
 ## Don'ts
@@ -254,7 +251,7 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 - Don't commit `.env`, `performance.db`, `cache/*.json`, or `output/`.
 - Don't skip `_fix_post_quality`. Banned words leak into LinkedIn and cause algorithm penalty.
 - Don't run `linkedin_auth.py` in CI — interactive browser flow only.
-- Don't read format from `slot["format"]` — use `DAY_FORMAT[day_index]`. Slot format field may be stale after a replan.
+- Don't add a `DAY_FORMAT` or `DAY_STRATEGY` constant — day strategies are decided dynamically by the LLM during weekly planning.
 - Don't add a personal LinkedIn fallback to `_author_urn()`.
 
 ## Tests

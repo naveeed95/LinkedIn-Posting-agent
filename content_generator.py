@@ -102,17 +102,7 @@ Never use: delve, leverage, synergy, game-changer, revolutionary,
 • Mix: 1 broad + 2 niche + 1 brand (#TheTechTutors)
 """
 
-DAY_STRATEGY = {
-    0: "Monday — MOTIVATIONAL [TEXT]: Challenge a limiting belief SMB owners have about AI. Punchy, conversational.",
-    1: "Tuesday — PRACTICAL TOOL [TEXT]: Spotlight one specific AI tool with measurable ROI a business owner can try today.",
-    2: "Wednesday — HOW-TO [TEXT]: A step-by-step process a solo founder can implement before Friday.",
-    3: "Thursday — INDUSTRY NEWS [TEXT]: A real AI development with a specific stat showing business impact.",
-    4: "Friday — INSIGHT [TEXT]: A counterintuitive truth about AI adoption that makes owners think differently.",
-    5: "Saturday — QUICK WIN [TEXT]: One fast AI tip, hack, or shortcut that takes under 10 minutes to try.",
-    6: "Sunday — COMMUNITY [TEXT]: An engaging question that sparks conversation about AI in their business.",
-}
-
-DAY_FORMAT = {0: "text", 1: "text", 2: "text", 3: "text", 4: "text", 5: "text", 6: "text"}
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> str:
@@ -247,37 +237,28 @@ def choose_weekly_strategy(
 
 TODAY: {_date.today().isoformat()}
 AUDIENCE: SMB owners (1–50 employees), 30–55, pressed for time, skeptical of hype.
-GOAL: Pick the AI subdomain most TIMELY and most relevant to SMB pain points RIGHT NOW — based on what's actually trending below.
+GOAL: Based on what is actually trending RIGHT NOW, identify the ONE AI subdomain with the highest urgency for SMB owners this week.
 {trending_block}{perf_block}{avoid_block}
 
-AVAILABLE DOMAINS — pick the ONE with highest SMB urgency THIS WEEK:
-• AI Agents & Autonomous Workflows — bots that handle multi-step tasks end-to-end
-• AI Tools for Small Business — specific apps with clear ROI for <50-person teams
-• LLM Cost & Efficiency — how to get AI results cheaper and faster
-• AI Automation (no-code / low-code) — Zapier/Make-level tools anyone can set up today
-• Generative AI for Marketing & Content — copy, images, video for small marketing budgets
-• AI in Customer Service — chatbots, auto-replies, ticket triage
-• Machine Learning for Business Analytics — predictive dashboards, demand forecasting
-• AI Security & Risk Management — protecting business data when using AI tools
-• AI for HR & Recruitment — screening, onboarding, scheduling automation
-• Other (specify — only if trending headlines clearly point there)
-
-DOMAIN SELECTION CRITERIA (pick highest scoring):
-✓ Appears in 2+ of the trending headlines above
+SELECTION CRITERIA — pick the domain that scores highest on ALL of these:
+✓ Directly supported by 2+ of the trending headlines above (ground your choice in real evidence)
 ✓ Has a specific monetary or time-saving benefit for a business under 50 people
-✓ Not in the RECENTLY COVERED list
-✓ Business owner can try something this week for under $100
+✓ Something a business owner can act on this week without hiring a developer
+✓ Not covered in the RECENTLY COVERED list above
+✓ Ideally under $100/month for the owner to try
 
-Also pick the best LinkedIn posting time (7am, 8am, 9am, or 10am PKT).
-Tue–Thu 8–10am typically peaks for B2B audiences.
+Do NOT pick from a fixed list — derive the domain from the headlines themselves.
+Name it specifically (e.g. "AI invoice automation for freelancers", not "AI Tools").
+
+Also pick the best LinkedIn posting time based on current algorithm rules in your context (typically 8–10am local for B2B).
 
 Return ONLY valid JSON:
 {{
-  "domain": "exact domain name from list above",
+  "domain": "specific AI subdomain derived from trending headlines",
   "focus_keywords": ["3–5 specific search terms relevant RIGHT NOW, include year 2026"],
   "content_pillar": "one sentence: the single most urgent SMB pain point this domain solves this week",
   "posting_time": "8am PKT",
-  "rationale": "2 sentences: (1) why this domain based on trending headlines above, (2) specific SMB pain it addresses"
+  "rationale": "2 sentences: (1) which headlines support this domain, (2) specific SMB pain it addresses"
 }}"""
 
     raw = _generate(prompt, max_tokens=500)
@@ -333,92 +314,45 @@ Rationale:      {strategy.get('rationale', '')}
 
     domain_name = strategy.get("domain", "") if strategy else ""
 
-    prompt = f"""You are planning The Tech Tutors' LinkedIn content for the full week (Mon–Sun). 7 posts. One per day.
+    prompt = f"""You are planning The Tech Tutors' LinkedIn content for Mon–Sun (7 posts, one per day).
 
 AUDIENCE: SMB owners (1–50 employees), 30–55, pressed for time, skeptical of hype.
-They care about: saving hours per week, cutting software costs, staying competitive.
-They ignore: generic AI hype, academic research, anything requiring a developer to implement.
+They care about: saving hours/week, cutting costs, staying competitive without needing developers.
+They ignore: generic AI hype, academic research, enterprise-only tools.
 {strategy_block}
-TRENDING TOPICS THIS WEEK (ranked by relevance — pick from these):
+TRENDING TOPICS THIS WEEK (pick from these):
 {topics_text}
 {avoid_block}
 {perf_block}
 
-ALL 7 DAYS USE TEXT FORMAT — conversational LinkedIn posts only.
+YOUR TASK:
+For each of the 7 days (Monday–Sunday), pick the BEST topic and decide the post angle and strategy.
+Use the LinkedIn algorithm rules injected in your system context to decide what content style performs best on each day.
+Vary the content mix across the week — different angles, different hook styles, different content types (insights, how-tos, tools, stats, questions, opinions) so the week doesn't feel repetitive.
 
-DAY 0 — MONDAY (text)
-PURPOSE: Challenge a specific limiting belief stopping SMB owners from using AI.
-ANGLE MUST: Name the exact belief + flip it with a concrete counter-fact or number.
-BEST TOPIC FIT: adoption stats, cost myth data, misconception-busting studies.
-SCORING +3: debunks "AI requires coding" OR "AI only for big companies" OR "AI costs too much"
-ANGLE EXAMPLE: "Most SMB owners think AI costs $500/month. The average is now $23/month."
-REJECT IF: no specific belief named, no number, no counter-example.
+QUALITY RULES for every slot:
+• Angle must contain a specific number, tool name, time saving, or concrete outcome — no vague claims
+• Topic must be actionable for a business owner without a developer
+• Reject any topic that is enterprise-only, purely academic, or has no clear SMB benefit
+• Use past performance data above to favour hook styles and days that have worked
 
-DAY 1 — TUESDAY (text)
-PURPOSE: Spotlight ONE specific AI tool with measurable ROI a business owner can try TODAY.
-ANGLE MUST: Name the tool + specific time or money saved + price point.
-BEST TOPIC FIT: tool reviews, product launches, comparison posts, user ROI data.
-SCORING +3: specific tool mentioned with free tier or under $50/month price
-ANGLE EXAMPLE: "Notion AI saves 6 hrs/week on meeting notes. Costs $10/month."
-REJECT IF: no tool named, no number cited, requires a developer to set up.
-
-DAY 2 — WEDNESDAY (text)
-PURPOSE: Give a step-by-step process a solo founder can implement before Friday.
-ANGLE MUST: Name the specific process + number of steps + time to implement.
-BEST TOPIC FIT: how-to guides, automation workflows, setup tutorials.
-SCORING +3: steps use no-code tools (Zapier, Make, n8n, ChatGPT, Notion)
-ANGLE EXAMPLE: "5 steps to automate customer follow-up emails — 90 minutes to set up."
-REJECT IF: no step count, no time estimate, requires hiring a developer.
-
-DAY 3 — THURSDAY (text)
-PURPOSE: Report a data-driven AI development with direct SMB impact.
-ANGLE MUST: State the development + cite a specific stat + explain impact for a <50-person business.
-BEST TOPIC FIT: research reports, product announcements, efficiency studies.
-SCORING +3: includes a %, $ figure, or hours-saved stat that applies to SMBs
-ANGLE EXAMPLE: "New study: AI agents cut customer service workload 43%. Costs $200/month to deploy."
-REJECT IF: enterprise-only focus, no specific number, theoretical or academic.
-
-DAY 4 — FRIDAY (text)
-PURPOSE: Leave owners with a counterintuitive insight that reframes how they see AI adoption.
-ANGLE MUST: Deliver ONE surprising truth + name who it affects + the implication.
-BEST TOPIC FIT: contrarian takes, pattern observations, unexpected adoption data.
-SCORING +3: insight is something an SMB owner would screenshot and share
-ANGLE EXAMPLE: "The slowest AI adopters aren't the least tech-savvy — they're the most profitable. Here's why that's about to change."
-REJECT IF: predictable, generic, no reframe or surprise.
-
-DAY 5 — SATURDAY (text)
-PURPOSE: One fast AI tip, hack, or shortcut that takes under 10 minutes to try.
-ANGLE MUST: Name the specific shortcut + how long it takes + what problem it solves.
-BEST TOPIC FIT: prompt tips, quick automations, free tool hacks, copy-paste templates.
-SCORING +3: tip is doable in under 10 minutes with zero budget
-ANGLE EXAMPLE: "This one ChatGPT prompt writes your weekly report in 3 minutes. Copy it below."
-REJECT IF: requires setup, costs money, or takes more than 15 minutes.
-
-DAY 6 — SUNDAY (text)
-PURPOSE: Ask a question that gets SMB owners talking about AI in their own business.
-ANGLE MUST: Pose one specific question with no obvious right answer that invites personal experience.
-BEST TOPIC FIT: industry polling topics, decision dilemmas, "what's your challenge" angles.
-SCORING +3: question makes readers think about their specific business, not AI in general
-ANGLE EXAMPLE: "What's the one manual task in your business that would save you the most time if automated?"
-REJECT IF: generic yes/no question, obvious answer, doesn't invite personal stories.
-
-SCORING RULES (apply before picking each topic):
-• Base score 1–10 for SMB relevance (not AI importance generally — SMB specifically)
-• +2 if topic aligns with this week's domain: {domain_name}
-• +2 if topic contains specific numbers (%, $, hrs/week, headcount, price)
-• -3 if primarily about enterprise, government, or academic research
-• -3 if topic title is in the RECENTLY COVERED list
+SCORING (apply per topic):
+• Base 1–10: SMB relevance (not general AI importance)
+• +2 if aligns with this week's domain: {domain_name}
+• +2 if contains specific numbers (%, $, hrs, price)
+• -3 if enterprise/government/academic focus
+• -3 if in the RECENTLY COVERED list
 
 Return ONLY valid JSON array, exactly 7 objects (day_index 0–6):
 [
   {{
     "day_index": 0,
     "title": "topic title under 8 words",
-    "source_url": "exact URL from the topic list above",
-    "angle": "one sentence under 20 words — specific tool/number/outcome, no vague language",
+    "source_url": "exact URL from topic list above",
+    "angle": "one sentence under 20 words — specific tool/number/outcome",
     "format": "text",
     "score": 8,
-    "why": "one sentence: why this topic fits this specific day's purpose"
+    "why": "one sentence: what post style you chose for this day and why"
   }}
 ]"""
 
