@@ -8,7 +8,9 @@ Exports:
 """
 
 import json
+import os
 import re
+import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -22,11 +24,20 @@ ATOM = "http://www.w3.org/2005/Atom"
 
 RULES_RSS_FEEDS = [
     ("SocialMediaExaminer", "https://www.socialmediaexaminer.com/tag/linkedin/feed/"),
-    ("Hootsuite Blog",      "https://blog.hootsuite.com/tag/linkedin/feed/"),
-    ("Sprout Social",       "https://sproutsocial.com/insights/tag/linkedin/feed/"),
+    ("Buffer Blog",         "https://buffer.com/resources/feed/"),
+    ("Search Engine Journal","https://www.searchenginejournal.com/feed/"),
+    ("Later Blog",          "https://later.com/blog/feed/"),
 ]
 
-REDDIT_URL = "https://www.reddit.com/r/linkedin/top.json?t=week&limit=10"
+REDDIT_URL = "https://www.reddit.com/r/linkedin/top.json?t=week&limit=20"
+
+# Only pass through Reddit posts about algorithm/posting strategy — not user complaints
+_REDDIT_SIGNAL_KEYWORDS = (
+    "algorithm", "reach", "impression", "engagement", "post", "content",
+    "visibility", "viral", "follower", "hashtag", "feed", "newsletter",
+    "creator", "growth", "analytics", "strategy", "tip", "hack", "update",
+    "change", "ban", "penali", "boost", "suppress", "organic",
+)
 
 BASELINE_RULES = {
     "character_limit": 3000,
@@ -87,7 +98,9 @@ def _fetch_reddit_updates(max_items: int = 5) -> list[str]:
     for post in posts[:max_items]:
         title = post.get("data", {}).get("title", "").strip()
         score = post.get("data", {}).get("score", 0)
-        if title and score > 5:
+        title_lower = title.lower()
+        is_signal = any(kw in title_lower for kw in _REDDIT_SIGNAL_KEYWORDS)
+        if title and score > 5 and is_signal:
             updates.append(f"[Reddit r/linkedin] {title}")
     return updates
 
@@ -113,8 +126,24 @@ def _save_cache(rules: dict, updates: list[str]) -> None:
         "rules": rules,
         "recent_updates": updates,
     }
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    # Atomic write — see scheduler.save_schedule for rationale.
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=CACHE_FILE.name + ".",
+        suffix=".tmp",
+        dir=str(CACHE_FILE.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, CACHE_FILE)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def fetch_rules() -> dict:
@@ -150,12 +179,15 @@ def build_rules_prompt(data: dict) -> str:
         "── CURRENT LINKEDIN ALGORITHM RULES ──────────────────────",
         f"• Character limit: {rules['character_limit']} (optimal: {rules['optimal_post_length']})",
         f"• Links in post body: {'ALLOWED' if rules['link_in_body'] else 'PENALISED — put source URL in first comment only'}",
+        f"• First comment: {rules.get('first_comment_links', 'post source URLs in first comment, never in body')}",
         f"• Hashtags: {rules['optimal_hashtags']} (max {rules['hashtag_limit']})",
         f"• Automated comments: {rules['automated_comments']}",
         f"• Line breaks: {rules['line_breaks']}",
         f"• Best posting times: {rules['best_post_times']}",
         f"• Engagement window: {rules['engagement_window']}",
-        f"• AI citations: {'LinkedIn content now indexed by ChatGPT — write with authority' if rules['ai_citation_active'] else 'standard'}",
+        f"• Poll reach: {rules.get('poll_reach', 'polls get 3-5x more impressions than text')}",
+        f"• Carousel reach: {rules.get('carousel_reach', 'PDF carousels get highest dwell time')}",
+        f"• AI citations: {'LinkedIn content now indexed by ChatGPT — write with authority' if rules.get('ai_citation_active') else 'standard'}",
         "──────────────────────────────────────────────────────────",
     ]
 

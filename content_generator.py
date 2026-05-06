@@ -123,6 +123,9 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
     here — it uses generate_variants() to produce one output per model.
     """
     system = BRAND_CONTEXT + "\n\n" + WRITING_SYSTEM
+    rules = _get_rules_prompt()
+    if rules:
+        system += "\n\n" + rules
     if system_extra:
         system += "\n\n" + system_extra
     return call_with_fallback(
