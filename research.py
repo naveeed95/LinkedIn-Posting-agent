@@ -494,13 +494,19 @@ def fetch_trending_topics(
             seen.add(key)
             unique.append(t)
 
-    # Score each topic: base points + SMB relevance bonus + domain alignment bonus
+    # Score each topic. SMB relevance + domain alignment are the PRIMARY signals.
+    # Virality is a TIE-BREAKER only — log-scaled so a 20k-upvote meme never
+    # beats a 0-upvote Tavily article that directly addresses an SMB pain point.
+    import math
     domain_lower = domain.lower()
+    kw_list = list(focus_keywords or [])
     for t in unique:
         text = (t["title"] + " " + t.get("description", "")).lower()
-        smb_bonus    = 15 if any(kw in text for kw in SMB_BOOST_KEYWORDS) else 0
-        domain_bonus = 10 if domain_lower and domain_lower in text else 0
-        t["_score"]  = t.get("points", 0) + smb_bonus + domain_bonus
+        smb_bonus    = 100 if any(kw in text for kw in SMB_BOOST_KEYWORDS) else 0
+        domain_bonus = 60  if domain_lower and domain_lower in text else 0
+        kw_bonus     = 40  if any(kw.lower() in text for kw in kw_list) else 0
+        virality     = int(math.log2(t.get("points", 0) + 1) * 3)  # max ~45 for 20k pts
+        t["_score"]  = smb_bonus + domain_bonus + kw_bonus + virality
 
     unique.sort(key=lambda x: x.get("_score", 0), reverse=True)
 
