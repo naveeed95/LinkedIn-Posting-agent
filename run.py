@@ -38,8 +38,8 @@ from scheduler import (
 
 def _timing_note():
     now = datetime.now()
-    if now.weekday() < 5 and not (12 <= now.hour <= 15):
-        print(f"Note: it's {now.strftime('%H:%M')} — scheduled posting time is 1pm PKT weekdays.\n")
+    if not (12 <= now.hour <= 15):
+        print(f"Note: it's {now.strftime('%H:%M')} — scheduled posting time is 1pm PKT daily.\n")
 
 
 def cmd_plan():

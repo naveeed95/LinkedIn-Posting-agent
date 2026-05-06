@@ -2,7 +2,7 @@ name: Daily LinkedIn Post
 
 on:
   schedule:
-    - cron: '0 8 * * 1-5'  # 1pm PKT (UTC+5), Mon-Fri
+    - cron: '0 8 * * *'  # 1pm PKT (UTC+5), every day including weekends
   workflow_dispatch:
 
 concurrency:
