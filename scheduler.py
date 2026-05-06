@@ -3,11 +3,13 @@ Manages the weekly posting schedule stored in weekly_schedule.json.
 Week key is the ISO date of Monday (e.g. "2026-05-04").
 """
 import json
+import os
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
 SCHEDULE_FILE = Path(__file__).parent / "weekly_schedule.json"
-WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _week_start(d: date | None = None) -> date:
@@ -23,8 +25,27 @@ def load_schedule() -> dict:
 
 
 def save_schedule(schedule: dict):
-    with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
-        json.dump(schedule, f, indent=2, ensure_ascii=False)
+    # Atomic write: dump to a sibling temp file, fsync, then os.replace.
+    # Prevents a corrupt JSON if the process is killed mid-write (GH Actions
+    # cancel, OOM, crash) — readers always see either the old or new file.
+    SCHEDULE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=SCHEDULE_FILE.name + ".",
+        suffix=".tmp",
+        dir=str(SCHEDULE_FILE.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(schedule, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, SCHEDULE_FILE)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def build_week_slots() -> list[dict]:

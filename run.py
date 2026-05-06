@@ -14,6 +14,7 @@ import sys
 from datetime import date, datetime
 
 from content_generator import (
+    DAY_FORMAT,
     choose_weekly_strategy,
     engagement_scorer,
     generate_carousel_content,
@@ -73,15 +74,46 @@ def cmd_plan():
     if performance_data and performance_data.get("top_post_topic"):
         print(f"Using past performance data (best hook: {performance_data['best_hook_type']}, best day: {performance_data['best_day']}).\n")
 
-    # Step 2: Fetch trending topics and plan the week
+    # Step 2: Quick pre-fetch (RSS + HN) to ground strategy choice in real trending data
+    print("Quick pre-fetch for strategy grounding (RSS + Hacker News)...")
+    from research import fetch_rss_feeds, fetch_hacker_news as _fetch_hn
+    pre_fetch = fetch_rss_feeds(max_per_feed=5) + _fetch_hn(max_items=10)
+    if pre_fetch:
+        try:
+            strategy = choose_weekly_strategy(
+                performance_data=performance_data,
+                recent_titles=recent,
+                trending_sample=pre_fetch[:15],
+            )
+            save_strategy(strategy)
+            print(f"\n{'='*60}")
+            print(f"WEEKLY STRATEGY")
+            print(f"  Domain:       {strategy['domain']}")
+            print(f"  Pillar:       {strategy.get('content_pillar', '—')}")
+            print(f"  Keywords:     {', '.join(strategy.get('focus_keywords', []))}")
+            print(f"  Posting time: {strategy['posting_time']}")
+            print(f"  Rationale:    {strategy['rationale']}")
+            print(f"{'='*60}\n")
+        except Exception as e:
+            print(f"  Strategy re-selection failed: {e}. Continuing with initial strategy.\n")
+
+    # Step 3: Full research fetch — Tavily now uses domain-aware queries
     print("Fetching trending AI topics from the web...")
-    topics = fetch_trending_topics()
+    topics = fetch_trending_topics(
+        domain=strategy.get("domain", ""),
+        focus_keywords=strategy.get("focus_keywords", []),
+    )
     if not topics:
         print("ERROR: No topics fetched. Check your internet connection.")
         return
 
-    print(f"Found {len(topics)} topics. Asking AI to score and pick the best 5...\n")
-    planned = plan_weekly_posts(topics, recent_titles=recent, performance_data=performance_data)
+    print(f"Found {len(topics)} topics. Asking AI to score and pick the best 7...\n")
+    planned = plan_weekly_posts(
+        topics,
+        recent_titles=recent,
+        performance_data=performance_data,
+        strategy=strategy,
+    )
 
     slots = build_week_slots()
     for p in planned:
@@ -100,11 +132,13 @@ def cmd_plan():
     score_map: dict[int, int] = {}
     for idx, slot in enumerate(slots):
         score = next((p.get("score", "—") for p in planned if p.get("day_index") == idx), "—")
+        why   = next((p.get("why", "") for p in planned if p.get("day_index") == idx), "")
         if isinstance(score, int):
             score_map[idx] = score
         fmt   = f"[{slot['format']}]" if slot["format"] else "[--]"
         title = slot["topic"]["title"] if slot["topic"] else "— not planned —"
-        print(f"  {slot['day']:10}  {slot['date']}  {fmt:8}  score:{score}  {title}")
+        why_str = f"  ({why})" if why else ""
+        print(f"  {slot['day']:10}  {slot['date']}  {fmt:8}  score:{score}  {title}{why_str}")
 
     print("\nRun 'python run.py' each weekday morning to generate and post.")
 
@@ -154,10 +188,6 @@ def cmd_post(preview: bool = False, force: bool = False):
 
     if not slot:
         today = date.today()
-        if today.weekday() >= 5 and not force:
-            print("Today is a weekend — no post scheduled.")
-            print("Tip: use 'python run.py --test' to force-generate from this week's plan.")
-            return
         slots = get_week_overview()
         planned = [s for s in slots if s.get("topic") and s.get("status") == "pending"]
         if not planned:
@@ -171,7 +201,8 @@ def cmd_post(preview: bool = False, force: bool = False):
         return
 
     topic = slot["topic"]
-    fmt   = slot["format"]
+    _weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    fmt = DAY_FORMAT.get(_weekdays.index(slot["day"]) if slot["day"] in _weekdays else 0, "text")
 
     print(f"Day:    {slot['day']} {slot['date']}")
     print(f"Topic:  {topic['title']}")
@@ -311,10 +342,6 @@ def cmd_auto():
 
     slot = get_today_slot()
     if not slot:
-        today = date.today()
-        if today.weekday() >= 5:
-            print("Today is a weekend — no post scheduled.")
-            return
         print("No slot found for today. Run 'python run.py plan' first.")
         return
 
@@ -322,9 +349,19 @@ def cmd_auto():
         print(f"Already posted today ({slot['date']}).")
         return
 
+    # Idempotency guard: a prior run may have published successfully but
+    # crashed before update_slot persisted status. If post_urn is set we know
+    # the post is already live — repair status and exit instead of double-posting.
+    if slot.get("post_urn"):
+        print(f"Post URN already recorded for today ({slot['post_urn']}). Marking posted and exiting.")
+        slot["status"] = "posted"
+        update_slot(slot)
+        return
+
     topic = slot["topic"]
-    fmt   = slot.get("format", "text")
-    day   = slot["day"]
+    _weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    fmt = DAY_FORMAT.get(_weekdays.index(slot["day"]) if slot["day"] in _weekdays else 0, "text")
+    day = slot["day"]
 
     strategy       = get_strategy()
     focus_keywords = strategy.get("focus_keywords", [])
