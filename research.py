@@ -290,9 +290,9 @@ def fetch_exa_similar(top_post_urls: list[str]) -> list[dict]:
 # ── Supadata YouTube (optional) ────────────────────────────────────────────────
 
 AI_YOUTUBE_CHANNELS = [
-    ("Matt Wolfe",        "UCT4KCGtNAGKB5eXqm5k5Spw"),
     ("Two Minute Papers", "UCbfYPyITQ-7l4upoX8nvctg"),
-    ("Andrej Karpathy",   "UCH-2wCe5ChpLhP1pAFrp-9g"),
+    ("Lex Fridman",       "UCSHZKyawb77ixDdsGog4iWA"),
+    ("AI Explained",      "UCNJ1Ymd5yFuUPtn21xtRbbw"),
 ]
 
 def fetch_youtube_transcripts() -> list[dict]:

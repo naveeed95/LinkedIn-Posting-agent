@@ -51,19 +51,14 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
-          LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
-          LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
           LINKEDIN_ORG_URN: ${{ secrets.LINKEDIN_ORG_URN }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_APPROVALS_CHANNEL_ID: ${{ secrets.DISCORD_APPROVALS_CHANNEL_ID }}
           DISCORD_POSTED_CHANNEL_ID: ${{ secrets.DISCORD_POSTED_CHANNEL_ID }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
-          DISCORD_COMMENTS_CHANNEL_ID: ${{ secrets.DISCORD_COMMENTS_CHANNEL_ID }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           SUPADATA_API_KEY: ${{ secrets.SUPADATA_API_KEY }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           LANDING_PAGE_URL: ${{ secrets.LANDING_PAGE_URL }}
         run: python run.py auto
 
