@@ -17,6 +17,15 @@ def _week_start(d: date | None = None) -> date:
     return d - timedelta(days=d.weekday())
 
 
+def _plan_week_start() -> date:
+    """Week start for planning. On Sunday the cron plans the UPCOMING week,
+    so we return next Monday instead of the current (almost-done) week's Monday."""
+    today = date.today()
+    if today.weekday() == 6:  # Sunday
+        return today + timedelta(days=1)
+    return _week_start(today)
+
+
 def load_schedule() -> dict:
     if SCHEDULE_FILE.exists():
         with open(SCHEDULE_FILE, encoding="utf-8") as f:
@@ -49,7 +58,7 @@ def save_schedule(schedule: dict):
 
 
 def build_week_slots() -> list[dict]:
-    monday = _week_start()
+    monday = _plan_week_start()
     slots = []
     for i, day in enumerate(WEEKDAYS):
         slots.append({
@@ -67,7 +76,14 @@ def build_week_slots() -> list[dict]:
 
 def init_week(slots: list[dict]) -> None:
     schedule = load_schedule()
-    schedule[_week_start().isoformat()] = slots
+    # Derive week key from the slots themselves so Sunday planning (which produces
+    # next week's dates via _plan_week_start) stores under the correct Monday key.
+    if slots:
+        first = date.fromisoformat(slots[0]["date"])
+        week_key = (first - timedelta(days=first.weekday())).isoformat()
+    else:
+        week_key = _week_start().isoformat()
+    schedule[week_key] = slots
     save_schedule(schedule)
 
 
@@ -99,7 +115,7 @@ def get_week_overview() -> list[dict]:
 
 def save_strategy(strategy: dict) -> None:
     schedule = load_schedule()
-    schedule[f"{_week_start().isoformat()}_strategy"] = strategy
+    schedule[f"{_plan_week_start().isoformat()}_strategy"] = strategy
     save_schedule(schedule)
 
 
