@@ -3,6 +3,9 @@ name: Enable Daily Post
 on:
   workflow_dispatch:
 
+permissions:
+  actions: write
+
 jobs:
   enable:
     runs-on: ubuntu-latest
