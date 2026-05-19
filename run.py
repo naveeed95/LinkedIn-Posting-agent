@@ -35,10 +35,19 @@ from scheduler import (
 )
 
 
+def _validate_env(*required: str) -> None:
+    missing = [k for k in required if not os.environ.get(k)]
+    if missing:
+        print(f"[startup] ERROR: Required env vars not set: {', '.join(missing)}")
+        print("[startup] Set these as GitHub Secrets or in your .env file.")
+        sys.exit(1)
+
+
 def _timing_note():
     now = datetime.now()
-    if not (12 <= now.hour <= 15):
-        print(f"Note: it's {now.strftime('%H:%M')} — scheduled posting time is 1pm PKT daily.\n")
+    strategy = get_strategy()
+    posting_time = strategy.get("posting_time", "1pm PKT") if strategy else "1pm PKT"
+    print(f"Note: it's {now.strftime('%H:%M')} — configured posting time is {posting_time} daily.\n")
 
 
 def cmd_plan():
@@ -176,6 +185,7 @@ def cmd_stats():
 
 
 def cmd_post(preview: bool = False, force: bool = False):
+    _validate_env("GROQ_API_KEY")
     _timing_note()
     slot = get_today_slot()
 
@@ -322,6 +332,7 @@ def cmd_post(preview: bool = False, force: bool = False):
 
 def cmd_auto():
     """Fully automated run for GitHub Actions. Delegates to agentic loop in agent_runner.py."""
+    _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
     from agent_runner import run_agent
     run_agent()
 

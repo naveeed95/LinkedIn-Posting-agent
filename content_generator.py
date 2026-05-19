@@ -132,6 +132,11 @@ def _extract_json(text: str, opening: str) -> str:
     close = "]" if opening == "[" else "}"
     start = text.find(opening)
     end = text.rfind(close) + 1
+    if start == -1 or end <= start:
+        raise ValueError(
+            f"No {opening}...{close} block found in LLM response "
+            f"(first 200 chars): {text[:200]!r}"
+        )
     raw = text[start:end]
 
     # Escape control characters inside JSON string values
@@ -385,7 +390,7 @@ def generate_text_post_variants(
     if previous:
         previous_block = "\nPrevious attempts (write something genuinely different — different hook, different angle, different examples):\n"
         for i, p in enumerate(previous, 1):
-            previous_block += f"--- Previous {i} ---\n{p[:400]}\n"
+            previous_block += f"--- Previous {i} ---\n{p[:1800]}\n"
 
     research_block = ""
     if topic.get("research_context"):
