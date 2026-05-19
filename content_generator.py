@@ -426,12 +426,6 @@ Return ONLY the post text — no preamble, no explanations, no labels."""
     return variants
 
 
-def generate_text_post(topic: dict) -> str:
-    """Backward-compat helper: returns text of the first successful variant."""
-    variants = generate_text_post_variants(topic)
-    return variants[0]["text"] if variants else ""
-
-
 def generate_carousel_content(
     topic: dict,
     article_text: str = "",

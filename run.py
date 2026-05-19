@@ -180,7 +180,9 @@ def cmd_post(preview: bool = False, force: bool = False):
     slot = get_today_slot()
 
     if not slot:
-        today = date.today()
+        if not force:
+            print("No slot planned for today. Run 'python run.py plan' first, or use --test to force.")
+            return
         slots = get_week_overview()
         planned = [s for s in slots if s.get("topic") and s.get("status") == "pending"]
         if not planned:
