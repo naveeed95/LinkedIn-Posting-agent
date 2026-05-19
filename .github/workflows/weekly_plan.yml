@@ -61,10 +61,12 @@ jobs:
 
       - name: Upload schedule artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: weekly-schedule
           path: weekly_schedule.json
           retention-days: 90
+        continue-on-error: true
 
       - name: Upload LinkedIn rules cache
         uses: actions/upload-artifact@v4
