@@ -26,13 +26,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download performance DB
-        uses: actions/download-artifact@v4
-        with:
-          name: performance-db
-          path: .
-        continue-on-error: true
-
       - name: Download schedule
         uses: actions/download-artifact@v4
         with:
@@ -48,11 +41,3 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_COMMENTS_CHANNEL_ID: ${{ secrets.DISCORD_COMMENTS_CHANNEL_ID }}
         run: python auto_responder.py
-
-      - name: Upload performance DB
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: performance-db
-          path: performance.db
-          retention-days: 90
