@@ -84,7 +84,9 @@ STRATEGY_MODEL    = "llama-70b"  # for weekly planning & topic ranking
 # ── Provider availability ─────────────────────────────────────────────────────
 
 def _provider_available(provider: str) -> bool:
-    return True  # groq validated at import; only provider now
+    if provider == "groq":
+        return bool(os.environ.get("GROQ_API_KEY"))
+    return False
 
 
 def _call_with_retry(

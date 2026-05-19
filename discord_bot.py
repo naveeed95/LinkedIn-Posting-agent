@@ -111,7 +111,17 @@ def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
             headers=_headers(),
             timeout=15,
         )
-        return resp.json() if resp.ok else []
+        if not resp.ok:
+            return []
+        try:
+            data = resp.json()
+            if isinstance(data, list):
+                return data
+            print(f"  [discord] Unexpected response shape: {str(data)[:200]}")
+            return []
+        except Exception as e:
+            print(f"  [discord] Response decode error: {e}")
+            return []
     except Exception as e:
         print(f"  [discord] Fetch messages error: {e}")
         return []

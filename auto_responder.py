@@ -122,21 +122,25 @@ def fetch_unanswered_comments() -> list[dict]:
 
     unanswered = []
     for urn in post_urns:
-        for comment in fetch_comments(urn):
-            if not _page_has_replied(comment):
-                message = comment.get("message", {}).get("text", "").strip()
-                if not message:
-                    continue
-                comment_urn = _extract_comment_urn(comment)
-                if not comment_urn:
-                    print(f"  [responder] Comment without URN skipped (post {urn}): {message[:60]}")
-                    continue
-                unanswered.append({
-                    "post_urn": urn,
-                    "comment_urn": comment_urn,
-                    "author": comment.get("actor", "unknown"),
-                    "text": message,
-                })
+        try:
+            for comment in fetch_comments(urn):
+                if not _page_has_replied(comment):
+                    message = comment.get("message", {}).get("text", "").strip()
+                    if not message:
+                        continue
+                    comment_urn = _extract_comment_urn(comment)
+                    if not comment_urn:
+                        print(f"  [responder] Comment without URN skipped (post {urn}): {message[:60]}")
+                        continue
+                    unanswered.append({
+                        "post_urn": urn,
+                        "comment_urn": comment_urn,
+                        "author": comment.get("actor", "unknown"),
+                        "text": message,
+                    })
+        except Exception as e:
+            print(f"  [responder] Error processing comments for {urn}: {e}")
+            continue
 
     print(f"  [responder] Found {len(unanswered)} unanswered comments.")
     return unanswered

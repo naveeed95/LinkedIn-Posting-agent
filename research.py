@@ -192,7 +192,8 @@ def fetch_huggingface_trending(limit: int = 10) -> list[dict]:
 def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
     since = int(time.time()) - days_back * 86400
     # Run multiple short queries — long multi-word queries + date filter return 0 on HN Algolia
-    hn_queries = ["AI", "LLM", "automation business", "artificial intelligence"]
+    hn_queries = ["AI", "LLM", "automation business", "artificial intelligence",
+                  "small business AI", "AI tools productivity"]
     items: list[dict] = []
     seen: set[str] = set()
     per_query = max(4, max_items // len(hn_queries))
@@ -223,7 +224,10 @@ def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
         except Exception as e:
             print(f"  [research] Hacker News query '{query}' failed: {e}")
 
-    print(f"  [research] Hacker News: {len(items)} items")
+    if len(items) < 3:
+        print(f"  [research] WARNING: HN returned only {len(items)} items — Algolia API may be slow or rate-limited")
+    else:
+        print(f"  [research] Hacker News: {len(items)} items")
     return items
 
 
@@ -531,14 +535,18 @@ def fetch_trending_topics(
     print("  Fetching Reddit broad AI search (all subreddits)...")
     topics.extend(fetch_reddit_ai_search())
 
-    # Deduplicate by title prefix
+    # Deduplicate: exact prefix match first, then near-duplicate similarity check
+    from difflib import SequenceMatcher
     seen:   set[str]   = set()
     unique: list[dict] = []
     for t in topics:
         key = t["title"].lower()[:50]
-        if key not in seen:
-            seen.add(key)
-            unique.append(t)
+        if key in seen:
+            continue
+        if any(SequenceMatcher(None, t["title"].lower(), u["title"].lower()).ratio() > 0.85 for u in unique):
+            continue
+        seen.add(key)
+        unique.append(t)
 
     # Score each topic. SMB relevance + domain alignment are the PRIMARY signals.
     # Virality is a TIE-BREAKER only — log-scaled so a 20k-upvote meme never
