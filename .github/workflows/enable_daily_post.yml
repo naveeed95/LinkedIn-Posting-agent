@@ -3,19 +3,18 @@ name: Enable Daily Post
 on:
   workflow_dispatch:
 
-permissions:
-  actions: write
-
 jobs:
   enable:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Re-enable daily_post.yml
-        run: gh workflow enable daily_post.yml
+        run: gh workflow enable daily_post.yml --repo naveeed95/linkedin-posting-agent
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
 
       - name: Trigger daily post immediately
-        run: gh workflow run daily_post.yml --ref master
+        run: gh workflow run daily_post.yml --ref master --repo naveeed95/linkedin-posting-agent
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
