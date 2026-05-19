@@ -1,4 +1,4 @@
-"""
+'''
 Discord bot for The Tech Tutors posting agent.
 Uses Discord HTTP API directly (no gateway/websocket needed for GitHub Actions).
 
@@ -18,7 +18,7 @@ Exports:
   send_analytics_report(report_data)                         -> None
   send_rules_update(changes)                                 -> None
   send_weekly_plan(slots, strategy, scores)                  -> None
-"""
+'''
 
 import os
 import time
@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DISCORD_API = "https://discord.com/api/v10"
-APPROVAL_POLL_INTERVAL = 300  # 5 minutes between checks
+APPROVAL_POLL_INTERVAL = 15  # 15 seconds between checks
 
 
 def _token() -> str:
@@ -111,17 +111,7 @@ def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
             headers=_headers(),
             timeout=15,
         )
-        if not resp.ok:
-            return []
-        try:
-            data = resp.json()
-            if isinstance(data, list):
-                return data
-            print(f"  [discord] Unexpected response shape: {str(data)[:200]}")
-            return []
-        except Exception as e:
-            print(f"  [discord] Response decode error: {e}")
-            return []
+        return resp.json() if resp.ok else []
     except Exception as e:
         print(f"  [discord] Fetch messages error: {e}")
         return []
@@ -209,8 +199,6 @@ def wait_for_approval(
 
     while time.time() < deadline:
         if checks > 0:
-            mins_left = int((deadline - time.time()) / 60)
-            print(f"  [discord] Waiting for approval... ({mins_left}min left)")
             time.sleep(APPROVAL_POLL_INTERVAL)
 
         checks += 1
@@ -237,6 +225,11 @@ def wait_for_approval(
                 if custom_text:
                     return {"action": "edit", "text": custom_text}
 
+        # Print status every minute (every 4 checks at 15s interval)
+        if checks % 4 == 0:
+            mins_left = int((deadline - time.time()) / 60)
+            print(f"  [discord] Waiting for approval... ({mins_left}min left)")
+
     print("  [discord] Approval timeout reached.")
     return {"action": "timeout"}
 
@@ -246,11 +239,7 @@ def send_design_approval_message(
     topic: dict,
     day: str,
 ) -> str | None:
-    """Send a carousel approval showing each model's structured slide content.
-
-    `variants` is a list of {"model_key", "display_name", "content"} dicts where
-    `content` has slide1..slide5 + caption. The user picks by number.
-    """
+    """Send a carousel approval showing each model's structured slide content."""
     date_str = datetime.now().strftime("%A %d %B %Y")
     divider  = "━" * 40
 
@@ -350,13 +339,6 @@ def wait_for_comment_approval(
     suggested_reply: str,
     timeout_minutes: int = 25,
 ) -> dict:
-    """Poll Discord #comments channel for a reply to a comment approval message.
-
-    Returns:
-      {"action": "post",  "text": str}  — post this text as the LinkedIn reply
-      {"action": "skip"}                — user skipped
-      {"action": "timeout"}             — no response within timeout
-    """
     channel_id = _channel("DISCORD_COMMENTS_CHANNEL_ID")
     if not channel_id or not message_id:
         return {"action": "timeout"}
@@ -366,8 +348,6 @@ def wait_for_comment_approval(
 
     while time.time() < deadline:
         if checks > 0:
-            mins_left = int((deadline - time.time()) / 60)
-            print(f"  [discord] Waiting for comment approval... ({mins_left}min left)")
             time.sleep(APPROVAL_POLL_INTERVAL)
         checks += 1
 
@@ -458,10 +438,7 @@ def send_weekly_plan(
     strategy: dict | None = None,
     scores: dict[int, int] | None = None,
 ) -> str | None:
-    """Send the full week's content plan to the planning channel.
-
-    Falls back to DISCORD_APPROVALS_CHANNEL_ID if DISCORD_PLAN_CHANNEL_ID is not set.
-    """
+    """Send the full week's content plan to the planning channel."""
     channel_id = _channel("DISCORD_PLAN_CHANNEL_ID") or _channel("DISCORD_APPROVALS_CHANNEL_ID")
     if not channel_id:
         print("  [discord] No plan or approvals channel configured — weekly plan not sent.")
@@ -492,8 +469,8 @@ def send_weekly_plan(
         url   = topic.get("source_url", "")
         why   = topic.get("why", "")
         score = scores.get(i, "—")
+        fmt   = slot.get("format") or "text"
 
-        fmt = slot.get("format") or "text"
         block = (
             f"{divider}\n"
             f"**{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"
