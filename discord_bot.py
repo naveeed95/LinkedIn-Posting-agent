@@ -483,9 +483,10 @@ def send_weekly_plan(
         why   = topic.get("why", "")
         score = scores.get(i, "—")
 
+        fmt = slot.get("format") or "text"
         block = (
             f"{divider}\n"
-            f"**{slot['day']} — {slot['date']}**  `[text]`  score: {score}\n"
+            f"**{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"
             f"**Topic:** {title}\n"
         )
         if angle:

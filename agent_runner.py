@@ -228,7 +228,24 @@ def run_agent() -> None:
     def tool_get_today_slot() -> dict:
         slot = get_today_slot()
         if not slot:
-            return {"status": "no_slot", "message": "No slot planned for today. Run plan first."}
+            # Fallback: use any pending slot from the current week
+            from scheduler import get_week_overview
+            week_slots = get_week_overview()
+            pending = [s for s in week_slots if s.get("topic") and s.get("status") == "pending"]
+            if pending:
+                slot = pending[0]
+                print(f"[agent] No slot for today — falling back to pending slot: {slot['day']} ({slot['date']})")
+            else:
+                # No plan at all — alert the user via Discord
+                try:
+                    from discord_bot import notify_workflow_failure
+                    notify_workflow_failure(
+                        "⚠️ **No content plan for this week** — run `python run.py plan` "
+                        "to generate the week's schedule, then re-trigger the daily post."
+                    )
+                except Exception:
+                    pass
+                return {"status": "no_slot", "message": "No slot planned for today. Run plan first."}
         if slot.get("status") == "posted":
             return {"status": "already_posted", "date": slot["date"]}
         if slot.get("post_urn"):

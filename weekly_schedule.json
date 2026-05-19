@@ -199,5 +199,124 @@
       "status": "pending",
       "post_urn": null
     }
+  ],
+  "2026-05-18_strategy": {
+    "domain": "AI productivity tools for small teams",
+    "content_pillar": "Business owners spend 10+ hours/week on tasks AI could handle in minutes",
+    "focus_keywords": [
+      "AI productivity tools 2026",
+      "ChatGPT small business automation",
+      "no-code AI workflow tools",
+      "small business AI cost savings"
+    ],
+    "posting_time": "8am PKT",
+    "rationale": "AI productivity tools for SMBs are at peak relevance as monthly costs drop below $30. This week focuses on practical, immediate wins any business owner can implement without a developer."
+  },
+  "2026-05-18": [
+    {
+      "day": "Monday",
+      "date": "2026-05-18",
+      "topic": {
+        "title": "AI Cuts Email Time 80%",
+        "source_url": "https://venturebeat.com/category/ai/",
+        "angle": "AI email tools cut daily email time from 45 minutes to 8 minutes — most SMBs don't know they exist",
+        "why": "High-impact Monday hook with a specific time saving that resonates immediately with busy owners"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Tuesday",
+      "date": "2026-05-19",
+      "topic": {
+        "title": "ChatGPT Writes Proposals",
+        "source_url": "https://techcrunch.com/category/artificial-intelligence/",
+        "angle": "ChatGPT generates a full client proposal in 3 minutes — takes most business owners 2 hours manually",
+        "why": "Concrete time saving on a high-value task every service business owner does weekly"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Wednesday",
+      "date": "2026-05-20",
+      "topic": {
+        "title": "First AI Automation in 20 Min",
+        "source_url": "https://zapier.com/blog/ai-automation/",
+        "angle": "5-step process to automate your most repetitive task — no developer, no code, done before lunch",
+        "why": "Action-oriented Wednesday content with a clear process SMB owners can start today"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Thursday",
+      "date": "2026-05-21",
+      "topic": {
+        "title": "AI Stack Replaces $3k Software",
+        "source_url": "https://www.technologyreview.com/topic/artificial-intelligence/",
+        "angle": "SMBs replacing $3,000/month in software subscriptions with a $28/month AI stack — here's the breakdown",
+        "why": "Data-driven Thursday post with specific cost numbers that make owners stop scrolling"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Friday",
+      "date": "2026-05-22",
+      "topic": {
+        "title": "AI Replies in 4 Minutes Flat",
+        "source_url": "https://hbr.org/topic/technology-and-analytics",
+        "angle": "Small businesses cutting customer response time from 8 hours to 4 minutes with AI — without hiring anyone",
+        "why": "Friday social proof: a measurable outcome that shows AI working right now in real businesses"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Saturday",
+      "date": "2026-05-23",
+      "topic": {
+        "title": "Early AI Adopters 6x Ahead",
+        "source_url": "https://www.mckinsey.com/capabilities/mckinsey-digital/our-insights/",
+        "angle": "Businesses using AI since 2024 now have a 6x productivity advantage — the gap is compounding every month",
+        "why": "Saturday insight that reframes urgency: not just about saving time, about competitive survival"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    },
+    {
+      "day": "Sunday",
+      "date": "2026-05-24",
+      "topic": {
+        "title": "Biggest Time Drain Question",
+        "source_url": "https://www.entrepreneur.com/topic/artificial-intelligence",
+        "angle": "What one task in your business eats the most time — and could be automated this week?",
+        "why": "Sunday engagement post: a question that gets SMB owners talking and reveals AI opportunities"
+      },
+      "format": "text",
+      "post_text": null,
+      "design_brief": null,
+      "status": "pending",
+      "post_urn": null
+    }
   ]
 }
