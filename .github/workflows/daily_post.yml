@@ -33,6 +33,9 @@ jobs:
           path: .
         continue-on-error: true
 
+      - name: Prepare cache directory
+        run: mkdir -p cache
+
       - name: Download LinkedIn rules cache
         uses: actions/download-artifact@v4
         with:
