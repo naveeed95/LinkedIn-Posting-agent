@@ -30,9 +30,12 @@ ENV_FILE   = ".env"
 
 
 def refresh_linkedin_token() -> dict:
-    client_id     = os.environ["LINKEDIN_CLIENT_ID"]
-    client_secret = os.environ["LINKEDIN_CLIENT_SECRET"]
+    client_id     = os.environ.get("LINKEDIN_CLIENT_ID", "")
+    client_secret = os.environ.get("LINKEDIN_CLIENT_SECRET", "")
     refresh_token = os.environ.get("LINKEDIN_REFRESH_TOKEN", "")
+
+    if not client_id or not client_secret:
+        raise ValueError("LINKEDIN_CLIENT_ID or LINKEDIN_CLIENT_SECRET not set.")
 
     if not refresh_token:
         raise ValueError(
@@ -133,6 +136,9 @@ def main():
             if new_refresh_token:
                 update_github_secret(repo, "LINKEDIN_REFRESH_TOKEN", new_refresh_token, pat)
             print("  GitHub secrets updated.")
+            _notify_discord(
+                f"✅ **LinkedIn token auto-refreshed** (expires in {days} days). GitHub secrets updated."
+            )
         except Exception as e:
             msg = f"⚠️ **LinkedIn token refreshed but GitHub secret update FAILED** — update manually.\nError: {e}"
             print(msg)
@@ -143,10 +149,9 @@ def main():
         set_key(ENV_FILE, "LINKEDIN_ACCESS_TOKEN", new_access_token)
         if new_refresh_token:
             set_key(ENV_FILE, "LINKEDIN_REFRESH_TOKEN", new_refresh_token)
-
-    _notify_discord(
-        f"✅ **LinkedIn token auto-refreshed** (expires in {days} days). GitHub secret updated."
-    )
+        _notify_discord(
+            f"✅ **LinkedIn token refreshed** (expires in {days} days). Saved to local .env (no GitHub PAT configured)."
+        )
     print("Done.")
 
 

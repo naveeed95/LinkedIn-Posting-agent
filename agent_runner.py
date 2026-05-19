@@ -443,6 +443,21 @@ def run_agent() -> None:
 
     # ── Agent loop ─────────────────────────────────────────────────────────────
 
+    # Fetch LinkedIn algorithm rules and inject into system prompt
+    rules_suffix = ""
+    try:
+        from linkedin_rules_fetcher import build_rules_prompt, fetch_rules
+        rules_data = fetch_rules()
+        rules_suffix = build_rules_prompt(rules_data)
+        if rules_suffix:
+            print("[agent] LinkedIn rules injected into system prompt.")
+    except Exception as e:
+        print(f"[agent] Rules fetch skipped: {e}")
+
+    system_prompt = AGENT_SYSTEM
+    if rules_suffix:
+        system_prompt = AGENT_SYSTEM + "\n\n" + rules_suffix
+
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"), timeout=90.0)
     messages: list[dict] = [
         {"role": "user", "content": "Run today's LinkedIn posting workflow."}
@@ -455,7 +470,7 @@ def run_agent() -> None:
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": AGENT_SYSTEM}] + messages,
+            messages=[{"role": "system", "content": system_prompt}] + messages,
             tools=TOOLS,
             tool_choice="auto",
             max_tokens=2048,

@@ -508,6 +508,7 @@ def send_weekly_plan(
         score = scores.get(i, "—")
         fmt   = slot.get("format") or "text"
 
+        fmt = slot.get("format") or "text"
         block = (
             f"{divider}\n"
             f"**{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"
