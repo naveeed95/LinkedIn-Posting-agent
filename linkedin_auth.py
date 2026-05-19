@@ -36,7 +36,7 @@ class CallbackHandler(http.server.BaseHTTPRequestHandler):
         if not expected_state or received_state != expected_state:
             self.send_response(400)
             self.end_headers()
-            self.wfile.write(b"<h2>Auth failed. State mismatch — possible CSRF.</h2>")
+            self.wfile.write(b"<h2>Auth failed. State mismatch - possible CSRF.</h2>")
             return
 
         if "code" in params:

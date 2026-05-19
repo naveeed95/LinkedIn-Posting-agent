@@ -72,7 +72,15 @@ def _author_urn() -> str:
     return urn
 
 
+LINKEDIN_MAX_CHARS = 3000
+
+
 def post_to_linkedin(text: str) -> dict:
+    if len(text) > LINKEDIN_MAX_CHARS:
+        raise ValueError(
+            f"Post text is {len(text)} chars, exceeds LinkedIn max ({LINKEDIN_MAX_CHARS}). "
+            "Shorten the post before publishing."
+        )
     token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
     if not token:
         raise EnvironmentError("LINKEDIN_ACCESS_TOKEN is required but not set")
@@ -248,5 +256,6 @@ def get_post_stats(post_urn: str) -> dict:
             "likes":    data.get("likesSummary", {}).get("totalLikes", 0),
             "comments": data.get("commentsSummary", {}).get("totalFirstLevelComments", 0),
         }
-    except Exception:
+    except Exception as e:
+        print(f"  [linkedin] get_post_stats({post_urn[:40]}): {type(e).__name__}: {e}")
         return {}

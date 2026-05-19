@@ -75,6 +75,8 @@ def build_week_slots() -> list[dict]:
 
 
 def init_week(slots: list[dict]) -> None:
+    if len(slots) != 7:
+        print(f"  [scheduler] WARNING: init_week received {len(slots)} slots (expected 7) — schedule may be incomplete")
     schedule = load_schedule()
     # Derive week key from the slots themselves so Sunday planning (which produces
     # next week's dates via _plan_week_start) stores under the correct Monday key.
@@ -110,7 +112,10 @@ def update_slot(slot: dict) -> None:
 
 def get_week_overview() -> list[dict]:
     schedule = load_schedule()
-    return schedule.get(_week_start().isoformat(), [])
+    slots = schedule.get(_week_start().isoformat(), [])
+    if slots and len(slots) not in (0, 7):
+        print(f"  [scheduler] WARNING: Week has {len(slots)} slots (expected 7) — schedule may be corrupt")
+    return slots
 
 
 def save_strategy(strategy: dict) -> None:

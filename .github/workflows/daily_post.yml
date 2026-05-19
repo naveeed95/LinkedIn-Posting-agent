@@ -33,6 +33,9 @@ jobs:
           path: .
         continue-on-error: true
 
+      - name: Prepare cache directory
+        run: mkdir -p cache
+
       - name: Download LinkedIn rules cache
         uses: actions/download-artifact@v4
         with:
@@ -56,6 +59,7 @@ jobs:
           DISCORD_APPROVALS_CHANNEL_ID: ${{ secrets.DISCORD_APPROVALS_CHANNEL_ID }}
           DISCORD_POSTED_CHANNEL_ID: ${{ secrets.DISCORD_POSTED_CHANNEL_ID }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+          DISCORD_PLAN_CHANNEL_ID: ${{ secrets.DISCORD_PLAN_CHANNEL_ID }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           SUPADATA_API_KEY: ${{ secrets.SUPADATA_API_KEY }}

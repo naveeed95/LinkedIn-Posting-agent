@@ -1,4 +1,4 @@
-"""
+'''
 Discord bot for The Tech Tutors posting agent.
 Uses Discord HTTP API directly (no gateway/websocket needed for GitHub Actions).
 
@@ -18,7 +18,7 @@ Exports:
   send_analytics_report(report_data)                         -> None
   send_rules_update(changes)                                 -> None
   send_weekly_plan(slots, strategy, scores)                  -> None
-"""
+'''
 
 import os
 import time
@@ -111,7 +111,17 @@ def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
             headers=_headers(),
             timeout=15,
         )
-        return resp.json() if resp.ok else []
+        if not resp.ok:
+            return []
+        try:
+            data = resp.json()
+            if isinstance(data, list):
+                return data
+            print(f"  [discord] Unexpected response shape: {str(data)[:200]}")
+            return []
+        except Exception as e:
+            print(f"  [discord] Response decode error: {e}")
+            return []
     except Exception as e:
         print(f"  [discord] Fetch messages error: {e}")
         return []
@@ -141,23 +151,34 @@ def send_approval_message(
         )
         return None
 
+    single = len(variants) == 1
     sections: list[str] = []
     for i, v in enumerate(variants, 1):
         score = scores[i - 1] if i - 1 < len(scores) else 0
+        label = "" if single else f"[{i}] "
         sections.append(
             f"{divider}\n"
-            f"**[{i}] {v['display_name']}** — score {score}/100\n"
+            f"**{label}{v['display_name']}** — score {score}/100\n"
             f"{v['text']}"
         )
 
-    instructions = "Reply with:\n"
-    for i, v in enumerate(variants, 1):
-        instructions += f"**{i}** → post {v['display_name']}'s version\n"
-    instructions += (
-        "**r [hint]** → regenerate all variants (e.g. `r make them punchier`)\n"
-        "**edit: [your text]** → post your own custom version\n"
-        "**skip** → skip today (logged)"
-    )
+    if single:
+        instructions = (
+            "**Reply with:**\n"
+            "✅ `yes` — approve and post this\n"
+            "🔄 `r [hint]` — regenerate (e.g. `r make it punchier`)\n"
+            "✏️ `edit: [your text]` — post your own version instead\n"
+            "❌ `skip` — skip today (logged as missed)"
+        )
+    else:
+        instructions = "**Reply with:**\n"
+        for i, v in enumerate(variants, 1):
+            instructions += f"✅ `{i}` — post {v['display_name']}'s version\n"
+        instructions += (
+            "🔄 `r [hint]` — regenerate all (e.g. `r make them punchier`)\n"
+            "✏️ `edit: [your text]` — post your own version instead\n"
+            "❌ `skip` — skip today (logged as missed)"
+        )
 
     header = (
         f"📝 **THE TECH TUTORS — Daily Post** | {day} {date_str}\n"
@@ -194,13 +215,13 @@ def wait_for_approval(
         return {"action": "timeout"}
 
     valid_picks = {str(i) for i in range(1, num_variants + 1)}
+    # Natural language aliases for approving (always maps to variant 0 / the only variant)
+    approve_words = {"yes", "approve", "post", "ok", "okay", "send", "publish"}
     deadline = time.time() + timeout_minutes * 60
     checks = 0
 
     while time.time() < deadline:
         if checks > 0:
-            mins_left = int((deadline - time.time()) / 60)
-            print(f"  [discord] Waiting for approval... ({mins_left}min left)")
             time.sleep(APPROVAL_POLL_INTERVAL)
 
         checks += 1
@@ -213,6 +234,11 @@ def wait_for_approval(
             text = msg.get("content", "").strip()
             text_lower = text.lower()
 
+            # Natural approval: yes / approve / post / ok / send / publish
+            if text_lower in approve_words:
+                return {"action": "post", "variant_index": 0}
+
+            # Numbered selection: 1, 2, 3...
             if text_lower in valid_picks:
                 return {"action": "post", "variant_index": int(text_lower) - 1}
 
@@ -227,6 +253,11 @@ def wait_for_approval(
                 if custom_text:
                     return {"action": "edit", "text": custom_text}
 
+        # Print status every minute (every 4 checks at 15s interval)
+        if checks % 4 == 0:
+            mins_left = int((deadline - time.time()) / 60)
+            print(f"  [discord] Waiting for approval... ({mins_left}min left)")
+
     print("  [discord] Approval timeout reached.")
     return {"action": "timeout"}
 
@@ -236,11 +267,7 @@ def send_design_approval_message(
     topic: dict,
     day: str,
 ) -> str | None:
-    """Send a carousel approval showing each model's structured slide content.
-
-    `variants` is a list of {"model_key", "display_name", "content"} dicts where
-    `content` has slide1..slide5 + caption. The user picks by number.
-    """
+    """Send a carousel approval showing each model's structured slide content."""
     date_str = datetime.now().strftime("%A %d %B %Y")
     divider  = "━" * 40
 
@@ -279,13 +306,22 @@ def send_design_approval_message(
             f"**CAPTION:** {cap_preview}"
         )
 
-    instructions = "Reply with:\n"
-    for i, v in enumerate(variants, 1):
-        instructions += f"**{i}** → post {v['display_name']}'s carousel to LinkedIn\n"
-    instructions += (
-        "**r [hint]** → regenerate all (e.g. `r add more stats`)\n"
-        "**skip** → skip today (logged)"
-    )
+    single = len(variants) == 1
+    if single:
+        instructions = (
+            "**Reply with:**\n"
+            "✅ `yes` — approve and post this carousel\n"
+            "🔄 `r [hint]` — regenerate (e.g. `r add more stats`)\n"
+            "❌ `skip` — skip today (logged as missed)"
+        )
+    else:
+        instructions = "**Reply with:**\n"
+        for i, v in enumerate(variants, 1):
+            instructions += f"✅ `{i}` — post {v['display_name']}'s carousel\n"
+        instructions += (
+            "🔄 `r [hint]` — regenerate all (e.g. `r add more stats`)\n"
+            "❌ `skip` — skip today (logged as missed)"
+        )
 
     header = (
         f"📄 **THE TECH TUTORS — Carousel Post** | {day} {date_str}\n"
@@ -340,13 +376,6 @@ def wait_for_comment_approval(
     suggested_reply: str,
     timeout_minutes: int = 25,
 ) -> dict:
-    """Poll Discord #comments channel for a reply to a comment approval message.
-
-    Returns:
-      {"action": "post",  "text": str}  — post this text as the LinkedIn reply
-      {"action": "skip"}                — user skipped
-      {"action": "timeout"}             — no response within timeout
-    """
     channel_id = _channel("DISCORD_COMMENTS_CHANNEL_ID")
     if not channel_id or not message_id:
         return {"action": "timeout"}
@@ -356,8 +385,6 @@ def wait_for_comment_approval(
 
     while time.time() < deadline:
         if checks > 0:
-            mins_left = int((deadline - time.time()) / 60)
-            print(f"  [discord] Waiting for comment approval... ({mins_left}min left)")
             time.sleep(APPROVAL_POLL_INTERVAL)
         checks += 1
 
@@ -448,10 +475,7 @@ def send_weekly_plan(
     strategy: dict | None = None,
     scores: dict[int, int] | None = None,
 ) -> str | None:
-    """Send the full week's content plan to the planning channel.
-
-    Falls back to DISCORD_APPROVALS_CHANNEL_ID if DISCORD_PLAN_CHANNEL_ID is not set.
-    """
+    """Send the full week's content plan to the planning channel."""
     channel_id = _channel("DISCORD_PLAN_CHANNEL_ID") or _channel("DISCORD_APPROVALS_CHANNEL_ID")
     if not channel_id:
         print("  [discord] No plan or approvals channel configured — weekly plan not sent.")
@@ -482,6 +506,7 @@ def send_weekly_plan(
         url   = topic.get("source_url", "")
         why   = topic.get("why", "")
         score = scores.get(i, "—")
+        fmt   = slot.get("format") or "text"
 
         fmt = slot.get("format") or "text"
         block = (
@@ -504,7 +529,7 @@ def send_weekly_plan(
     )
 
     content = header + strategy_block + "\n".join(day_blocks) + f"\n{divider}\n"
-    content += "_Daily approval: reply `1` to post · `r hint` to regenerate · `skip` to skip_"
+    content += "_Daily approval: reply `yes` to post · `r [hint]` to regenerate · `edit: [text]` for custom · `skip` to skip_"
 
     msg_id = _send_long_message(channel_id, content)
     if msg_id:

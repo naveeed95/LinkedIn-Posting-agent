@@ -92,6 +92,15 @@ def _init_db() -> None:
             );
         """)
         conn.commit()
+        # Add indexes for fast lookups (safe to run on existing DBs)
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_posts_post_id    ON posts (post_id);
+            CREATE INDEX IF NOT EXISTS idx_posts_posted_at  ON posts (posted_at);
+            CREATE INDEX IF NOT EXISTS idx_metrics_post_id  ON metrics (post_id);
+            CREATE INDEX IF NOT EXISTS idx_hashtag_hashtag  ON hashtag_metrics (hashtag);
+            CREATE INDEX IF NOT EXISTS idx_topics_posted_at ON topics_history (posted_at);
+        """)
+        conn.commit()
         # Migrate existing DBs that pre-date the chosen_model column
         try:
             conn.execute("ALTER TABLE posts ADD COLUMN chosen_model TEXT")
@@ -115,10 +124,19 @@ def _li_headers() -> dict:
 # ── Public functions ───────────────────────────────────────────────────────────
 
 def log_post(post_data: dict) -> None:
+    import re as _re
     post_text = post_data.get("post_text", "")
     hashtags = " ".join(w for w in post_text.split() if w.startswith("#"))
-    first_word = post_text.strip().split()[0] if post_text.strip() else ""
-    hook_type = "question" if first_word in ("What", "Why", "How", "Is", "Are", "Do", "Can", "Have") else "bold"
+    first_line = post_text.strip().split("\n")[0] if post_text.strip() else ""
+    first_word = first_line.split()[0] if first_line.split() else ""
+    if first_word in ("What", "Why", "How", "Is", "Are", "Do", "Can", "Have", "Ever", "Would", "Could", "Should") or "?" in first_line:
+        hook_type = "question"
+    elif _re.match(r'^\d', first_line):
+        hook_type = "stat"
+    elif _re.match(r'^(Stop|Never|Always|Don\'t|If you)', first_line, _re.I):
+        hook_type = "contrarian"
+    else:
+        hook_type = "bold"
 
     with _connect() as conn:
         conn.execute(
@@ -226,7 +244,13 @@ def poll_metrics(post_id: str) -> dict:
         return data
 
     except Exception as e:
-        print(f"  [analytics] poll_metrics error: {e}")
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 401:
+            print(f"  [analytics] poll_metrics: LinkedIn token expired (401) — run token_refresher.py")
+        elif status == 429:
+            print(f"  [analytics] poll_metrics: rate limited (429) — will retry next poll cycle")
+        else:
+            print(f"  [analytics] poll_metrics error: {type(e).__name__}: {e}")
         return {}
 
 
@@ -240,6 +264,20 @@ def poll_all_recent(days: int = 7) -> None:
     for row in rows:
         print(f"  [analytics] Polling {row['post_id']}...")
         poll_metrics(row["post_id"])
+    prune_old_records()
+
+
+def prune_old_records(keep_days: int = 180) -> None:
+    cutoff = (datetime.now() - timedelta(days=keep_days)).isoformat()
+    with _connect() as conn:
+        deleted_m = conn.execute(
+            "DELETE FROM metrics WHERE polled_at < ?", (cutoff,)
+        ).rowcount
+        deleted_t = conn.execute(
+            "DELETE FROM topics_history WHERE posted_at < ?", (cutoff,)
+        ).rowcount
+        if deleted_m or deleted_t:
+            print(f"  [analytics] Pruned {deleted_m} metric rows, {deleted_t} topic history rows older than {keep_days}d")
 
 
 def get_performance_summary() -> dict:

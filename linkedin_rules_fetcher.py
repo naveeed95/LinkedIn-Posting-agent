@@ -50,8 +50,8 @@ def _load_cache() -> dict | None:
         fetched_at = datetime.fromisoformat(data["fetched_at"])
         if datetime.now() - fetched_at < timedelta(hours=CACHE_TTL_HOURS):
             return data
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [rules] Cache load failed ({type(e).__name__}: {e}) — will re-fetch")
     return None
 
 

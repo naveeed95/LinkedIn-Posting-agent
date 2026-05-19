@@ -355,8 +355,9 @@ def run_agent() -> None:
         msg_id = send_approval_message(variants, [score], topic, day)
 
         if not msg_id:
-            print("[agent] Discord not configured — auto-posting without approval.")
-            return {"action": "post", "auto": True}
+            print("[agent] WARNING: Discord not configured — cannot request approval. Skipping today's post.")
+            print("[agent] Set DISCORD_BOT_TOKEN and DISCORD_APPROVALS_CHANNEL_ID to enable approval flow.")
+            return {"action": "skip", "reason": "Discord not configured — approval required but unavailable"}
 
         decision = wait_for_approval(msg_id, timeout_minutes=120, num_variants=1)
         return {
@@ -457,7 +458,7 @@ def run_agent() -> None:
     if rules_suffix:
         system_prompt = AGENT_SYSTEM + "\n\n" + rules_suffix
 
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"), timeout=90.0)
     messages: list[dict] = [
         {"role": "user", "content": "Run today's LinkedIn posting workflow."}
     ]
@@ -496,12 +497,21 @@ def run_agent() -> None:
 
         for tc in msg.tool_calls:
             name = tc.function.name
-            args = json.loads(tc.function.arguments or "{}") or {}
+            try:
+                args = json.loads(tc.function.arguments or "{}") or {}
+            except json.JSONDecodeError as e:
+                print(f"[agent] Malformed tool args for {name}: {e} — skipping")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps({"error": "malformed arguments — please retry with valid JSON"}),
+                })
+                continue
             arg_preview = ", ".join(f"{k}={repr(v)[:40]}" for k, v in args.items())
             print(f"[agent]   -> {name}({arg_preview})")
 
             result = execute_tool(name, args)
-            print(f"[agent]   <- {json.dumps(result, default=str)[:150]}")
+            print(f"[agent]   <- {json.dumps(result, default=str)[:400]}")
 
             messages.append({
                 "role": "tool",
