@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DISCORD_API = "https://discord.com/api/v10"
-APPROVAL_POLL_INTERVAL = 300  # 5 minutes between checks
+APPROVAL_POLL_INTERVAL = 15  # 15 seconds between checks
 
 
 def _token() -> str:
