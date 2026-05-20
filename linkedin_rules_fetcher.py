@@ -130,7 +130,7 @@ def fetch_rules() -> dict:
     }
 
 
-def build_rules_prompt(data: dict) -> str:
+def build_rules_prompt(data: dict, max_chars: int = 2000) -> str:
     rules_text = data.get("rules_text", "")
     sources = data.get("sources", [])
     if not rules_text:
@@ -139,7 +139,7 @@ def build_rules_prompt(data: dict) -> str:
     source_titles = ", ".join(s["title"] for s in sources[:5] if s.get("title"))
     lines = [
         "── CURRENT LINKEDIN ALGORITHM RULES (fetched today) ──────────",
-        rules_text[:2000],
+        rules_text[:max_chars],
         "──────────────────────────────────────────────────────────────",
     ]
     if source_titles:

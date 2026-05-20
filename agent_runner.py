@@ -485,7 +485,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     try:
         from linkedin_rules_fetcher import build_rules_prompt, fetch_rules
         rules_data = fetch_rules()
-        rules_suffix = build_rules_prompt(rules_data)
+        rules_suffix = build_rules_prompt(rules_data, max_chars=600)
         if rules_suffix:
             print("[agent] LinkedIn rules injected into system prompt.")
     except Exception as e:
