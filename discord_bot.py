@@ -32,6 +32,8 @@ load_dotenv()
 DISCORD_API = "https://discord.com/api/v10"
 APPROVAL_POLL_INTERVAL = 15  # 15 seconds between checks
 
+_FETCH_ERROR = object()  # sentinel: distinguishes network error from empty message list
+
 
 def _token() -> str:
     return os.environ.get("DISCORD_BOT_TOKEN", "")
@@ -99,11 +101,15 @@ def _send_long_message(channel_id: str, content: str) -> str | None:
         msg_id = _send_message(channel_id, prefix + chunk)
         if i == 0:
             first_id = msg_id
+            if first_id is None:
+                print("  [discord] First chunk failed to send — aborting long message")
+                return None
         time.sleep(0.5)
     return first_id
 
 
-def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
+def _get_messages_after(channel_id: str, after_id: str) -> "list[dict] | object":
+    """Returns a list of message dicts, an empty list (no new messages), or _FETCH_ERROR on network/API error."""
     try:
         resp = requests.get(
             f"{DISCORD_API}/channels/{channel_id}/messages",
@@ -112,19 +118,20 @@ def _get_messages_after(channel_id: str, after_id: str) -> list[dict]:
             timeout=15,
         )
         if not resp.ok:
-            return []
+            print(f"  [discord] Fetch messages failed ({resp.status_code}): {resp.text[:200]}")
+            return _FETCH_ERROR
         try:
             data = resp.json()
             if isinstance(data, list):
                 return data
             print(f"  [discord] Unexpected response shape: {str(data)[:200]}")
-            return []
+            return _FETCH_ERROR
         except Exception as e:
             print(f"  [discord] Response decode error: {e}")
-            return []
+            return _FETCH_ERROR
     except Exception as e:
         print(f"  [discord] Fetch messages error: {e}")
-        return []
+        return _FETCH_ERROR
 
 
 # ── Public functions ───────────────────────────────────────────────────────────
@@ -209,6 +216,9 @@ def wait_for_approval(
       {"action": "skip"}
       {"action": "timeout"}
     """
+    if timeout_minutes <= 0:
+        return {"action": "timeout"}
+
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
     if not channel_id or not message_id:
         print("  [discord] No channel/message ID — defaulting to timeout.")
@@ -226,6 +236,9 @@ def wait_for_approval(
 
         checks += 1
         messages = _get_messages_after(channel_id, message_id)
+
+        if messages is _FETCH_ERROR:
+            continue
 
         for msg in reversed(messages):
             if msg.get("author", {}).get("bot"):
@@ -251,6 +264,8 @@ def wait_for_approval(
             if text_lower.startswith("edit:"):
                 custom_text = text[5:].strip()
                 if custom_text:
+                    if len(custom_text) > 3000:
+                        custom_text = custom_text[:3000]
                     return {"action": "edit", "text": custom_text}
 
         # Print status every minute (every 4 checks at 15s interval)
@@ -388,7 +403,10 @@ def wait_for_comment_approval(
             time.sleep(APPROVAL_POLL_INTERVAL)
         checks += 1
 
-        for msg in reversed(_get_messages_after(channel_id, message_id)):
+        messages = _get_messages_after(channel_id, message_id)
+        if messages is _FETCH_ERROR:
+            continue
+        for msg in reversed(messages):
             if msg.get("author", {}).get("bot"):
                 continue
             text       = msg.get("content", "").strip()
@@ -401,7 +419,7 @@ def wait_for_comment_approval(
             if text_lower.startswith("edit:"):
                 custom = text[5:].strip()
                 if custom:
-                    return {"action": "post", "text": custom}
+                    return {"action": "post", "text": custom[:1250]}
 
     return {"action": "timeout"}
 
@@ -507,8 +525,6 @@ def send_weekly_plan(
         why   = topic.get("why", "")
         score = scores.get(i, "—")
         fmt   = slot.get("format") or "text"
-
-        fmt = slot.get("format") or "text"
         block = (
             f"{divider}\n"
             f"**{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"

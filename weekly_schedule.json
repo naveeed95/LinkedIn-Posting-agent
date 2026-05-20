@@ -131,13 +131,15 @@
         "title": "5-Step Automation",
         "source_url": "https://aitoolkitpro.blog/no-code-ai-automation-2026/",
         "angle": "5 steps to automate emails",
-        "why": "Gives a step-by-step process for solo founders to implement before Friday"
+        "why": "Gives a step-by-step process for solo founders to implement before Friday",
+        "research_context": "- [Reddit Search] Local AI News You Missed - April 2026: \n- [Tavily] Five Automation Trends for 2026 that Manufacturers Need to Watch​ | Tavoron: For example, in a manufacturing facility with connected factory automation, traditionally disparate systems, such as an assembly robot, a conveyor, and an automated packaging solution, would be brought together and controlled by a centralized system that uses real-time data collected from sensors to tighten control of production equipment, machine vision systems to ensure accuracy and quality, and\n- [Tavily] Workflow Automation: 5 Powerful Trends Shaping 2026: This results in greater visibility and integrity, improved cross-team collaboration, enhanced business efficiency, and a superior customer experience. This explosive efficiency drives the 2026 Mandate: there is strong emphasis on building secure and trustworthy AI-driven workflow automation rather than merely adopting them. Automation is fundamentally shifting from simply automating the tasks to a\n- [Tavily] IT Automation Trends 2026 | Global State of IT Automation Report: Now in its fifth year, the Global State of IT Automation Report is Stonebranch's annual benchmark study of enterprise IT automation professionals. The 2026 edition is based on a quantitative survey of over 400 respondents across IT Ops, DevOps, CloudOps, DataOps, and PlatformOps roles in enterprise organizations worldwide, conducted in Q1 2026. The findings show where organizations actually are wi\n- [Tavily] Automation Tips from Our Experts | Automate | June 22-25, 2026: Quote from Milton Guerry, SCHUNK USA: Future-ready is not just about deploying more robots; it's about building a resilient, adaptable ecosystem that can evolve as demands change. Without the combination of flexible equipment and skilled people, future readiness is aspirational, not actionable.\n\n## WHY 2026 IS A CRITICAL YEAR FOR AUTOMATION PLANNING\n\nFor companies planning to automate or expand th"
       },
       "format": "text",
-      "post_text": null,
+      "post_text": "Automation just got a whole lot smarter\n \n2026 is shaping up to be a critical year for businesses to embrace automation and stay ahead of the curve.\n \n• According to a recent survey of 400 IT professionals, automation is shifting from just automating tasks to building secure and trustworthy AI-driven workflow automation.\n• In fact, 80% of companies are now focusing on building a resilient and adaptable ecosystem that can evolve as demands change.\n• Manufacturers are already seeing the benefits, with connected factory automation increasing production efficiency by up to 30%.\n• A recent discussion highlighted the importance of automating emails to free up staff time.\n• With the right tools, you can automate up to 90% of your email workload, saving time and resources.\n\nHere are 5 steps to automate your emails:\n• Identify repetitive email tasks that can be automated\n• Choose an automation tool that integrates with your existing systems\n• Set up workflows to trigger automated email responses\n• Test and refine your automated email workflows\n• Monitor and analyze the results to optimize your automation strategy\n\nBy automating your emails, you can free up staff time and focus on higher-value tasks.\n \nWhat's the one email task that's eating up the most time in your business?\n \nLearn more about automating your workflow.\n \n#AutomationSolutions #AIforBusiness #EmailAutomation",
       "design_brief": null,
-      "status": "pending",
-      "post_urn": null
+      "status": "posted",
+      "post_urn": "urn:li:share:7457712179878793216",
+      "chosen_model": "llama-70b"
     },
     {
       "day": "Thursday",
@@ -194,10 +196,11 @@
         "why": "Asks a question that gets SMB owners talking about AI in their own business"
       },
       "format": "text",
-      "post_text": null,
+      "post_text": "What's eating your time?\n \nManual tasks are a major pain point for many businesses.\nThey slow you down and take away from more important things.\n\n• Automating just one task can save you hours per week\n• Most businesses have at least 5 tasks that can be automated\n• The right automation tools can cut your software costs in half\n\nYou don't have to do everything yourself, and you shouldn't.\n \nWhich task is taking up the most time in your operations and how can you streamline it?\n \nLet's talk about how to free up more time in your day.\n \n#AIforBusiness #AutomationSolutions #SmallBusinessProductivity",
       "design_brief": null,
-      "status": "pending",
-      "post_urn": null
+      "status": "posted",
+      "post_urn": "urn:li:share:7459183370317692928",
+      "chosen_model": "llama-70b"
     }
   ],
   "2026-05-18_strategy": {

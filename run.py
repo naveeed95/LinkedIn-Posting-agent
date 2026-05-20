@@ -98,7 +98,13 @@ def cmd_plan():
         focus_keywords=strategy.get("focus_keywords", []),
     )
     if not topics:
-        print("ERROR: No topics fetched. Check your internet connection.")
+        msg = "Weekly plan failed: no topics fetched. Check internet / API keys."
+        print(f"[plan] ERROR: {msg}")
+        try:
+            from discord_bot import send_error_alert
+            send_error_alert(msg)
+        except Exception:
+            pass
         return
 
     print(f"Found {len(topics)} topics. Asking AI to score and pick the best 7...\n")
@@ -332,11 +338,11 @@ def cmd_post(preview: bool = False, force: bool = False):
             print("Skipped.")
 
 
-def cmd_auto():
+def cmd_auto(target_date: str | None = None):
     """Fully automated run for GitHub Actions. Delegates to agentic loop in agent_runner.py."""
     _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
     from agent_runner import run_agent
-    run_agent()
+    run_agent(target_date=target_date)
 
 
 def main():

@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from datetime import date as _date
 
 from dotenv import load_dotenv
@@ -104,6 +105,19 @@ Never use: delve, leverage, synergy, game-changer, revolutionary,
 
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+# Pre-compiled regex for banned-word detection (used in scorer and quality-fix verification)
+_BANNED_WORDS_PATTERN = re.compile(
+    r'\b(delve|leverage|synergy|game[-\s]changer|revolutionary|cutting[-\s]edge)\b'
+    r"|in today's fast[-\s]paced world|are you ready to|i'm excited to share"
+    r'|at the end of the day|the future is now|it\'s no secret that'
+    r'|in conclusion|to summarize',
+    re.IGNORECASE,
+)
+
+# Module-level rules cache: (prompt_str, timestamp)
+_rules_cache: tuple[str, float] | None = None
+_RULES_CACHE_TTL = 3600  # 1 hour
+
 
 def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> str:
     """Single-shot generation for strategy and utility calls.
@@ -147,6 +161,10 @@ def _extract_json(text: str, opening: str) -> str:
         return s
 
     raw = re.sub(r'"(?:[^"\\]|\\.)*"', _fix_string, raw, flags=re.DOTALL)
+    try:
+        json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Extracted JSON is not parseable ({e}): {raw[:200]!r}") from e
     return raw
 
 
@@ -173,9 +191,15 @@ POST:
 
 
 def _get_rules_prompt() -> str:
+    global _rules_cache
+    now = time.time()
+    if _rules_cache is not None and (now - _rules_cache[1]) < _RULES_CACHE_TTL:
+        return _rules_cache[0]
     try:
         from linkedin_rules_fetcher import fetch_rules, build_rules_prompt
-        return build_rules_prompt(fetch_rules())
+        result = build_rules_prompt(fetch_rules())
+        _rules_cache = (result, now)
+        return result
     except Exception as e:
         print(f"  [content] Rules fetch skipped: {e}")
         return ""
@@ -183,7 +207,8 @@ def _get_rules_prompt() -> str:
 
 def engagement_scorer(variant: str, past_performance: dict) -> int:
     score = 50
-    first_word = variant.strip().split()[0] if variant.strip() else ""
+    first_line = variant.strip().split("\n")[0] if variant.strip() else ""
+    first_word = first_line.split()[0] if first_line.split() else ""
     hook_type = "question" if first_word in ("What", "Why", "How", "Is", "Are", "Do", "Can", "Have") else "bold"
 
     hook_scores = past_performance.get("hook_scores", {})
@@ -203,8 +228,17 @@ def engagement_scorer(variant: str, past_performance: dict) -> int:
     else:
         score -= 5
 
-    if "?" in variant:
+    # Question in the opening line (not just anywhere in the post)
+    if "?" in first_line:
         score += 5
+
+    # Penalise banned words — these hurt the LinkedIn algorithm
+    if _BANNED_WORDS_PATTERN.search(variant):
+        score -= 10
+
+    # Penalise URLs in post body (LinkedIn hides posts with links)
+    if "http" in variant:
+        score -= 10
 
     return max(0, min(100, score))
 
@@ -362,13 +396,30 @@ Return ONLY valid JSON array, exactly 7 objects (day_index 0–6):
 ]"""
 
     raw = _generate(prompt, max_tokens=2000)
-    return json.loads(_extract_json(raw, "["))
+    planned = json.loads(_extract_json(raw, "["))
+    # Ensure exactly 7 slots — pad with fallback entries if LLM returned fewer
+    existing_indices = {p.get("day_index") for p in planned}
+    for i in range(7):
+        if i not in existing_indices:
+            print(f"  [content] WARNING: LLM returned no slot for day_index {i} — inserting fallback")
+            planned.append({
+                "day_index": i,
+                "title": "— fallback slot —",
+                "source_url": "",
+                "angle": "",
+                "format": "text",
+                "score": 0,
+                "why": "auto-generated fallback",
+            })
+    planned.sort(key=lambda x: x.get("day_index", 99))
+    return planned[:7]
 
 
 def generate_text_post_variants(
     topic: dict,
     n: int = 2,                          # kept for backward compatibility, ignored
     hint: str = "",
+    # n is intentionally ignored — variant count is controlled by llm_client.VARIANT_MODELS["text"]
     previous: list[str] | None = None,
     top_hashtags: list[str] | None = None,
 ) -> list[dict]:
@@ -378,6 +429,8 @@ def generate_text_post_variants(
     The number of variants depends on how many models are enabled in
     llm_client.VARIANT_MODELS["text"] and how many succeed.
     """
+    if n != 2:
+        print(f"  [content] WARNING: n={n} ignored — variant count controlled by llm_client.VARIANT_MODELS")
     rules_prompt = _get_rules_prompt()
 
     hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
@@ -425,6 +478,9 @@ Return ONLY the post text — no preamble, no explanations, no labels."""
     for v in variants:
         try:
             v["text"] = _fix_post_quality(v["text"])
+            found = _BANNED_WORDS_PATTERN.findall(v["text"])
+            if found:
+                print(f"  [content] WARNING: banned words remain after quality fix for {v['display_name']}: {found}")
         except Exception as e:
             print(f"  [content] Quality fix failed for {v['display_name']}: {e}")
 
