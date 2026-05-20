@@ -1,5 +1,5 @@
 """
-Agentic LinkedIn posting runner using Groq tool-use (Llama 3.3 70B).
+Agentic LinkedIn posting runner using DeepSeek tool-use (deepseek-chat).
 The LLM orchestrates the full workflow: research → generate → score → approve → post.
 Called from run.py cmd_auto().
 """
@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from groq import Groq
+from openai import OpenAI
 
 
 def _log(level: str, msg: str) -> None:
@@ -374,7 +374,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
         topic = state["topic"]
         day = state["day"]
-        variants = [{"model_key": "llama-70b", "display_name": "Llama 70B", "text": post_text}]
+        variants = [{"model_key": "deepseek-pro", "display_name": "DeepSeek Chat", "text": post_text}]
         msg_id = send_approval_message(variants, [score], topic, day)
 
         if not msg_id:
@@ -389,7 +389,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             "custom_text": decision.get("text", ""),
         }
 
-    def tool_publish_post(post_text: str, chosen_model: str = "llama-70b") -> dict:
+    def tool_publish_post(post_text: str, chosen_model: str = "deepseek-pro") -> dict:
         if not state.get("slot"):
             return {"status": "error", "error": "No slot in state — cannot publish"}
         slot = state["slot"]
@@ -495,7 +495,11 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     if rules_suffix:
         system_prompt = AGENT_SYSTEM + "\n\n" + rules_suffix
 
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"), timeout=90.0)
+    client = OpenAI(
+        api_key=os.environ.get("DEEPSEEK_API_KEY"),
+        base_url="https://api.deepseek.com",
+        timeout=90.0,
+    )
     messages: list[dict] = [
         {"role": "user", "content": "Run today's LinkedIn posting workflow."}
     ]
@@ -503,13 +507,13 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     if not os.environ.get("DISCORD_BOT_TOKEN"):
         _log("WARN", "DISCORD_BOT_TOKEN not set — approval step will auto-skip")
 
-    _log("INFO", "Starting agentic posting loop (Groq tool-use)...")
+    _log("INFO", "Starting agentic posting loop (DeepSeek tool-use)...")
 
     for step in range(20):
         _log("INFO", f"Step {step + 1}...")
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="deepseek-chat",
             messages=[{"role": "system", "content": system_prompt}] + messages,
             tools=TOOLS,
             tool_choice="auto",
