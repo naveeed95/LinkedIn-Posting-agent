@@ -350,14 +350,16 @@ def run_agent(target_date: str | None = None) -> None:
             past = get_performance_summary()
         except Exception:
             past = {}
-        score = engagement_scorer(post_text, past)
+        result = engagement_scorer(post_text, past)
+        score = result["score"]
+        advice = result.get("advice", "")
         threshold = 80
         return {
             "score": score,
             "threshold": threshold,
             "verdict": "excellent" if score >= 80 else "weak",
             "ready_to_send": score >= 80,
-            "advice": "" if score >= 80 else f"Score {score}/80 required. Try a stronger hook, add a specific number or stat, or make the insight more surprising.",
+            "advice": "" if score >= 80 else advice,
         }
 
     def tool_send_for_approval(post_text: str, score: int = 0) -> dict:
