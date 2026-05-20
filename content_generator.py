@@ -205,7 +205,7 @@ def _get_rules_prompt() -> str:
         return ""
 
 
-def engagement_scorer(variant: str, past_performance: dict) -> int:
+def _rule_based_score(variant: str, past_performance: dict) -> dict:
     score = 50
     first_line = variant.strip().split("\n")[0] if variant.strip() else ""
     first_word = first_line.split()[0] if first_line.split() else ""
@@ -228,19 +228,57 @@ def engagement_scorer(variant: str, past_performance: dict) -> int:
     else:
         score -= 5
 
-    # Question in the opening line (not just anywhere in the post)
     if "?" in first_line:
         score += 5
-
-    # Penalise banned words — these hurt the LinkedIn algorithm
     if _BANNED_WORDS_PATTERN.search(variant):
         score -= 10
-
-    # Penalise URLs in post body (LinkedIn hides posts with links)
     if "http" in variant:
         score -= 10
 
-    return max(0, min(100, score))
+    score = max(0, min(100, score))
+    return {"score": score, "advice": "Rule-based fallback — LLM scorer unavailable."}
+
+
+def engagement_scorer(variant: str, past_performance: dict) -> dict:
+    """Score a LinkedIn post using Llama 70B. Returns {"score": int, "advice": str}.
+    Falls back to rule-based scoring if the LLM call fails.
+    """
+    prompt = f"""Score this LinkedIn post for The Tech Tutors — a company that builds AI tools for small businesses.
+
+Target audience: SMB owners, 30–55, time-pressed, skeptical of hype. They want specific numbers and real outcomes.
+
+POST TO SCORE:
+{variant}
+
+Score 0–100 across these five areas:
+
+1. Hook (0–25): Is the first line punchy, specific, and impossible to ignore? Vague openers score low.
+2. Specificity (0–25): Does it cite real numbers, timeframes, costs, or concrete outcomes? "A lot" = 0 pts.
+3. Readability (0–20): Short sentences, one thought per line, grade 6 reading level, no jargon?
+4. Format (0–15): 3–5 hashtags on the last line only, 1,200–1,800 characters total, no URLs in body, no markdown bold (**text**)?
+5. Engagement trigger (0–15): Does it end with a genuine, specific question — NOT "do you agree?" or "what do you think?"?
+
+Automatic deductions:
+- Banned word found (delve, leverage, synergy, game-changer, revolutionary, cutting-edge): −10
+- URL in post body: −10
+
+Return ONLY valid JSON, nothing else:
+{{"score": <integer 0-100>, "advice": "<one sentence: the single most impactful change to push the score above 80>"}}"""
+
+    try:
+        raw = call_model(QUALITY_FIX_MODEL, prompt, max_tokens=120, temperature=0.1)
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start != -1 and end > start:
+            data = json.loads(raw[start:end])
+            score = max(0, min(100, int(data["score"])))
+            advice = str(data.get("advice", "")).strip()
+            print(f"  [content] LLM score: {score}/100")
+            return {"score": score, "advice": advice}
+    except Exception as e:
+        print(f"  [content] LLM scorer failed ({e}) — falling back to rule-based scorer")
+
+    return _rule_based_score(variant, past_performance)
 
 
 def choose_weekly_strategy(
