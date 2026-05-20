@@ -91,7 +91,6 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
         run: |
-          python -c "
-          from discord_bot import notify_workflow_failure
-          notify_workflow_failure('❌ **Weekly plan workflow FAILED** — check GitHub Actions logs.')
-          "
+          python notify_failure.py \
+            --workflow-name "Weekly Plan" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -22,9 +22,10 @@ Editing models:
 import os
 import random
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 from groq import Groq
+import groq as _groq_module
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -103,8 +104,11 @@ def _call_with_retry(
         try:
             return _dispatch(provider, model_id, prompt, system, max_tokens, temperature)
         except Exception as e:
-            msg = str(e).lower()
-            is_retryable = any(code in msg for code in ("429", "500", "502", "503", "rate limit", "rate_limit", "overloaded"))
+            is_retryable = (
+                isinstance(e, (_groq_module.RateLimitError, _groq_module.InternalServerError))
+                or (isinstance(e, _groq_module.APIStatusError) and getattr(e, "status_code", 0) in (429, 500, 502, 503))
+                or any(code in str(e).lower() for code in ("429", "500", "502", "503", "rate limit", "rate_limit", "overloaded"))
+            )
             if not is_retryable or attempt == max_retries - 1:
                 raise
             last_error = e
@@ -211,10 +215,13 @@ def generate_variants(
     variants: list[dict] = []
     with ThreadPoolExecutor(max_workers=min(4, len(model_keys))) as pool:
         futures = {pool.submit(_try_model, k): k for k in model_keys}
-        for fut in as_completed(futures):
-            result = fut.result()
-            if result:
-                variants.append(result)
+        try:
+            for fut in as_completed(futures, timeout=90):
+                result = fut.result()
+                if result:
+                    variants.append(result)
+        except FuturesTimeoutError:
+            print("  [llm] Variant generation timed out after 90s — using partial results")
 
     if not variants:
         raise RuntimeError(f"All models failed for job '{job}'")

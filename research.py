@@ -32,6 +32,7 @@ load_dotenv()
 
 HEADERS = {"User-Agent": "TheTechTutors-PostingAgent/1.0 (LinkedIn AI content research)"}
 HN_API  = "https://hn.algolia.com/api/v1/search"
+DESCRIPTION_MAX_CHARS = 300
 
 # ── RSS feed registry ──────────────────────────────────────────────────────────
 # Each entry: (display_name, url)
@@ -110,7 +111,7 @@ def fetch_rss_feeds(max_per_feed: int = 8) -> list[dict]:
             for entry in feed.entries:
                 title = _strip_html(entry.get("title", "")).strip()
                 link  = entry.get("link", "")
-                summary = _strip_html(entry.get("summary", entry.get("description", "")))[:300]
+                summary = _strip_html(entry.get("summary", entry.get("description", "")))[:DESCRIPTION_MAX_CHARS]
                 if not title or not link:
                     continue
                 pub = entry.get("published", "")
@@ -148,7 +149,7 @@ def fetch_reddit(max_per_sub: int = 10) -> list[dict]:
                 title = d.get("title", "").strip()
                 url   = d.get("url", "") or f"https://reddit.com{d.get('permalink', '')}"
                 score = d.get("score", 0)
-                desc  = _strip_html(d.get("selftext", ""))[:200]
+                desc  = _strip_html(d.get("selftext", ""))[:DESCRIPTION_MAX_CHARS]
                 pub = str(d.get("created_utc", ""))
                 if title and _is_ai_relevant(title):
                     items.append(_make_topic(title, url, f"Reddit r/{sub}", desc, points=score, published_date=pub))
@@ -225,7 +226,27 @@ def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
             print(f"  [research] Hacker News query '{query}' failed: {e}")
 
     if len(items) < 3:
-        print(f"  [research] WARNING: HN returned only {len(items)} items — Algolia API may be slow or rate-limited")
+        print(f"  [research] WARNING: HN returned only {len(items)} items — retrying without date filter")
+        try:
+            resp = requests.get(
+                HN_API,
+                params={"query": hn_queries[0], "tags": "story", "hitsPerPage": per_query},
+                headers=HEADERS,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            for hit in resp.json().get("hits", []):
+                title = hit.get("title", "").strip()
+                url   = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
+                key   = title.lower()
+                if title and key not in seen and _is_ai_relevant(title):
+                    seen.add(key)
+                    items.append(_make_topic(title, url, "Hacker News",
+                                             points=hit.get("points", 0),
+                                             published_date=hit.get("created_at", "")))
+            print(f"  [research] HN fallback (no date filter): {len(items)} total items")
+        except Exception as e:
+            print(f"  [research] HN fallback failed: {e}")
     else:
         print(f"  [research] Hacker News: {len(items)} items")
     return items
@@ -266,7 +287,7 @@ def fetch_tavily_topics(domain: str = "", keywords: list[str] | None = None) -> 
                 title = r.get("title", "").strip()
                 url   = r.get("url", "")
                 if title and url:
-                    items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:300]))
+                    items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:DESCRIPTION_MAX_CHARS]))
         except Exception as e:
             print(f"  [research] Tavily query failed: {e}")
     print(f"  [research] Tavily: {len(items)} items")
@@ -335,7 +356,7 @@ def fetch_youtube_search() -> list[dict]:
                 url   = r.get("url", "")
                 title = r.get("title", "").strip()
                 if "youtube.com/watch" in url and title:
-                    items.append(_make_topic(title, url, "YouTube", r.get("content", "")[:300]))
+                    items.append(_make_topic(title, url, "YouTube", r.get("content", "")[:DESCRIPTION_MAX_CHARS]))
         except Exception as e:
             print(f"  [research] YouTube search query failed: {e}")
     print(f"  [research] YouTube search: {len(items)} videos")
@@ -371,7 +392,7 @@ def fetch_reddit_ai_search(max_per_query: int = 5) -> list[dict]:
                 title = d.get("title", "").strip()
                 url   = d.get("url", "") or f"https://reddit.com{d.get('permalink', '')}"
                 score = d.get("score", 0)
-                desc  = _strip_html(d.get("selftext", ""))[:200]
+                desc  = _strip_html(d.get("selftext", ""))[:DESCRIPTION_MAX_CHARS]
                 if title and _is_ai_relevant(title):
                     items.append(_make_topic(title, url, "Reddit Search", desc,
                                              points=score,
@@ -407,8 +428,15 @@ def fetch_article_content(url: str, max_chars: int = 3000) -> str:
         text = re.sub(r"\s+", " ", text).strip()
         print(f"  [research] Article fetched: {len(text)} chars from {url[:60]}")
         return text[:max_chars]
+    except requests.exceptions.HTTPError as e:
+        status = getattr(e.response, "status_code", "?")
+        print(f"  [research] Article fetch HTTP {status}: {url[:60]}")
+        return ""
+    except requests.exceptions.Timeout:
+        print(f"  [research] Article fetch timeout: {url[:60]}")
+        return ""
     except Exception as e:
-        print(f"  [research] Article fetch failed: {e}")
+        print(f"  [research] Article fetch {type(e).__name__}: {url[:60]} — {e}")
         return ""
 
 
@@ -433,7 +461,7 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
                         title = r.get("title", "").strip()
                         url   = r.get("url", "")
                         if title and url:
-                            items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:400]))
+                            items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:DESCRIPTION_MAX_CHARS]))
                 except Exception as e:
                     print(f"  [research] Deep Tavily query failed: {e}")
         except ImportError:
@@ -484,7 +512,7 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
     seen:   set[str]   = set()
     unique: list[dict] = []
     for t in sorted(items, key=lambda x: x.get("points", 0), reverse=True):
-        key = t["title"].lower()[:50]
+        key = t["title"].lower()
         if key not in seen:
             seen.add(key)
             unique.append(t)
@@ -499,6 +527,10 @@ SMB_BOOST_KEYWORDS = (
     "small business", "smb", "startup", "entrepreneur", "founder",
     "save time", "save money", "automate", "no-code", "low-code",
     "cost", "roi", "per month", "hours per week", "productivity",
+)
+
+_SMB_PATTERN = re.compile(
+    "|".join(re.escape(k) for k in SMB_BOOST_KEYWORDS), re.IGNORECASE
 )
 
 
@@ -535,15 +567,17 @@ def fetch_trending_topics(
     print("  Fetching Reddit broad AI search (all subreddits)...")
     topics.extend(fetch_reddit_ai_search())
 
-    # Deduplicate: exact prefix match first, then near-duplicate similarity check
+    # Deduplicate: exact full-title match first, then near-duplicate check against
+    # a sliding window of the last 20 accepted items (O(n×20) instead of O(n²)).
     from difflib import SequenceMatcher
     seen:   set[str]   = set()
     unique: list[dict] = []
     for t in topics:
-        key = t["title"].lower()[:50]
+        key = t["title"].lower()
         if key in seen:
             continue
-        if any(SequenceMatcher(None, t["title"].lower(), u["title"].lower()).ratio() > 0.85 for u in unique):
+        window = unique[-20:]
+        if any(SequenceMatcher(None, key, u["title"].lower()).ratio() > 0.85 for u in window):
             continue
         seen.add(key)
         unique.append(t)
@@ -556,7 +590,7 @@ def fetch_trending_topics(
     kw_list = list(focus_keywords or [])
     for t in unique:
         text = (t["title"] + " " + t.get("description", "")).lower()
-        smb_bonus    = 100 if any(kw in text for kw in SMB_BOOST_KEYWORDS) else 0
+        smb_bonus    = 100 if _SMB_PATTERN.search(text) else 0
         domain_bonus = 60  if domain_lower and domain_lower in text else 0
         kw_bonus     = 40  if any(kw.lower() in text for kw in kw_list) else 0
         virality     = int(math.log2(t.get("points", 0) + 1) * 3)  # max ~45 for 20k pts

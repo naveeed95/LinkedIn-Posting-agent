@@ -25,6 +25,17 @@ load_dotenv()
 DB_FILE = Path(__file__).parent / "performance.db"
 LINKEDIN_STATS_URL = "https://api.linkedin.com/v2/organizationalEntityShareStatistics"
 
+WEIGHT_LIKES    = 1
+WEIGHT_COMMENTS = 2
+WEIGHT_SHARES   = 3
+
+
+def _engagement_expr(prefix: str = "m") -> str:
+    """Returns the SQL engagement score expression for a given table alias."""
+    if not prefix.isidentifier():
+        raise ValueError(f"Invalid SQL alias: {prefix!r}")
+    return f"{prefix}.likes * {WEIGHT_LIKES} + {prefix}.comments * {WEIGHT_COMMENTS} + {prefix}.shares * {WEIGHT_SHARES}"
+
 
 # ── Database setup ─────────────────────────────────────────────────────────────
 
@@ -183,7 +194,12 @@ def poll_metrics(post_id: str) -> dict:
             print(f"  [analytics] Poll failed ({resp.status_code}): {resp.text[:200]}")
             return {}
 
-        elements = resp.json().get("elements", [])
+        try:
+            resp_json = resp.json()
+        except Exception as e:
+            print(f"  [analytics] poll_metrics: malformed response from LinkedIn: {e} — body: {resp.text[:200]}")
+            return {}
+        elements = resp_json.get("elements", [])
         if not elements:
             return {}
 
@@ -205,8 +221,8 @@ def poll_metrics(post_id: str) -> dict:
                 try:
                     posted = datetime.fromisoformat(row["posted_at"])
                     hours = (datetime.now() - posted).total_seconds() / 3600
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"  [analytics] posted_at parse failed for {post_id}: {e}")
 
             conn.execute(
                 """INSERT INTO metrics
@@ -282,27 +298,28 @@ def prune_old_records(keep_days: int = 180) -> None:
 
 def get_performance_summary() -> dict:
     with _connect() as conn:
+        eng = _engagement_expr("m")
         hook_rows = conn.execute(
-            """SELECT hook_type,
-                      AVG(m.likes + m.comments * 2 + m.shares * 3) AS score
+            f"""SELECT hook_type,
+                      AVG({eng}) AS score
                FROM posts p
                JOIN metrics m ON p.post_id = m.post_id
                GROUP BY hook_type
-               ORDER BY score DESC"""
+               ORDER BY score DESC, hook_type ASC"""
         ).fetchall()
 
         day_rows = conn.execute(
-            """SELECT day_of_week,
-                      AVG(m.likes + m.comments * 2 + m.shares * 3) AS score
+            f"""SELECT day_of_week,
+                      AVG({eng}) AS score
                FROM posts p
                JOIN metrics m ON p.post_id = m.post_id
                GROUP BY day_of_week
-               ORDER BY score DESC"""
+               ORDER BY score DESC, day_of_week ASC"""
         ).fetchall()
 
         top_post = conn.execute(
-            """SELECT p.topic,
-                      (m.likes + m.comments * 2 + m.shares * 3) AS score
+            f"""SELECT p.topic,
+                      ({eng}) AS score
                FROM posts p
                JOIN metrics m ON p.post_id = m.post_id
                ORDER BY score DESC
@@ -310,7 +327,7 @@ def get_performance_summary() -> dict:
         ).fetchone()
 
         recent_avg = conn.execute(
-            """SELECT AVG(m.likes + m.comments * 2 + m.shares * 3) AS avg_score
+            f"""SELECT AVG({eng}) AS avg_score
                FROM posts p
                JOIN metrics m ON p.post_id = m.post_id
                WHERE p.posted_at >= ?""",
@@ -318,9 +335,9 @@ def get_performance_summary() -> dict:
         ).fetchone()
 
         model_rows = conn.execute(
-            """SELECT p.chosen_model,
+            f"""SELECT p.chosen_model,
                       COUNT(*) AS wins,
-                      AVG(m.likes + m.comments * 2 + m.shares * 3) AS score
+                      AVG({eng}) AS score
                FROM posts p
                JOIN metrics m ON p.post_id = m.post_id
                WHERE p.chosen_model IS NOT NULL AND p.chosen_model != ''
@@ -354,10 +371,11 @@ def get_topic_history(days: int = 14) -> list[str]:
 
 def get_top_post_urls(n: int = 3) -> list[str]:
     with _connect() as conn:
+        eng = _engagement_expr("m")
         rows = conn.execute(
-            """SELECT p.post_id FROM posts p
+            f"""SELECT p.post_id FROM posts p
                JOIN metrics m ON p.post_id = m.post_id
-               ORDER BY (m.likes + m.comments * 2 + m.shares * 3) DESC
+               ORDER BY ({eng}) DESC
                LIMIT ?""",
             (n,),
         ).fetchall()
@@ -370,8 +388,8 @@ def get_top_post_urls(n: int = 3) -> list[str]:
 def get_top_hashtags(n: int = 10) -> list[str]:
     with _connect() as conn:
         rows = conn.execute(
-            """SELECT hashtag,
-                      SUM(likes + comments * 2 + shares * 3) AS score
+            f"""SELECT hashtag,
+                      SUM(likes * {WEIGHT_LIKES} + comments * {WEIGHT_COMMENTS} + shares * {WEIGHT_SHARES}) AS score
                FROM hashtag_metrics
                GROUP BY hashtag
                ORDER BY score DESC

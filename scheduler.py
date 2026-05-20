@@ -76,7 +76,7 @@ def build_week_slots() -> list[dict]:
 
 def init_week(slots: list[dict]) -> None:
     if len(slots) != 7:
-        print(f"  [scheduler] WARNING: init_week received {len(slots)} slots (expected 7) — schedule may be incomplete")
+        raise ValueError(f"init_week requires exactly 7 slots, got {len(slots)}")
     schedule = load_schedule()
     # Derive week key from the slots themselves so Sunday planning (which produces
     # next week's dates via _plan_week_start) stores under the correct Monday key.
@@ -98,10 +98,27 @@ def get_today_slot() -> dict | None:
     return None
 
 
+def get_slot_for_date(date_str: str) -> dict | None:
+    """Find a slot by exact date (YYYY-MM-DD) across all weeks."""
+    schedule = load_schedule()
+    for week_key, slots in schedule.items():
+        if "_strategy" in week_key or not isinstance(slots, list):
+            continue
+        for slot in slots:
+            if slot.get("date") == date_str:
+                return slot
+    return None
+
+
 def update_slot(slot: dict) -> None:
     schedule = load_schedule()
-    week_key = _week_start().isoformat()
+    # Derive week key from slot's own date so backfill updates work correctly.
+    slot_date = date.fromisoformat(slot["date"])
+    week_key = (slot_date - timedelta(days=slot_date.weekday())).isoformat()
     days = schedule.get(week_key, [])
+    if not days:
+        print(f"  [scheduler] WARNING: week {week_key} not found in schedule — slot update lost")
+        return
     for i, s in enumerate(days):
         if s["date"] == slot["date"]:
             days[i] = slot
@@ -134,6 +151,8 @@ def get_recent_topics(weeks_back: int = 2) -> list[str]:
     cutoff = _week_start() - timedelta(weeks=weeks_back)
     titles: list[str] = []
     for week_key, days in schedule.items():
+        if not isinstance(days, list):
+            continue
         try:
             week_date = date.fromisoformat(week_key)
         except ValueError:

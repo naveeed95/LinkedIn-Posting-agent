@@ -10,6 +10,10 @@ from datetime import datetime
 
 from groq import Groq
 
+
+def _log(level: str, msg: str) -> None:
+    print(f"[agent][{level}] {datetime.now().strftime('%H:%M:%S')} {msg}")
+
 # ── Tool schemas ───────────────────────────────────────────────────────────────
 
 TOOLS = [
@@ -196,7 +200,7 @@ Hard rules:
 """
 
 
-def run_agent() -> None:
+def run_agent(target_date: str | None = None) -> None:
     """Agentic posting loop. Called from cmd_auto() in run.py."""
 
     from scheduler import get_today_slot, get_strategy, update_slot
@@ -226,7 +230,15 @@ def run_agent() -> None:
     # ── Tool implementations ───────────────────────────────────────────────────
 
     def tool_get_today_slot() -> dict:
-        slot = get_today_slot()
+        if target_date:
+            from scheduler import load_schedule, _week_start
+            from datetime import date as _date, timedelta
+            d = _date.fromisoformat(target_date)
+            week_key = (d - timedelta(days=d.weekday())).isoformat()
+            week_slots = load_schedule().get(week_key, [])
+            slot = next((s for s in week_slots if s.get("date") == target_date), None)
+        else:
+            slot = get_today_slot()
         if not slot:
             # Fallback: use any pending slot from the current week
             from scheduler import get_week_overview
@@ -250,7 +262,10 @@ def run_agent() -> None:
             return {"status": "already_posted", "date": slot["date"]}
         if slot.get("post_urn"):
             slot["status"] = "posted"
-            update_slot(slot)
+            try:
+                update_slot(slot)
+            except Exception as e:
+                print(f"[agent] WARNING: failed to persist slot: {e}")
             return {"status": "already_posted", "date": slot["date"]}
 
         state["slot"] = slot
@@ -367,6 +382,8 @@ def run_agent() -> None:
         }
 
     def tool_publish_post(post_text: str, chosen_model: str = "llama-70b") -> dict:
+        if not state.get("slot"):
+            return {"status": "error", "error": "No slot in state — cannot publish"}
         slot = state["slot"]
         topic = state["topic"]
         day = state["day"]
@@ -376,7 +393,10 @@ def run_agent() -> None:
             slot["post_urn"] = result["urn"]
             slot["post_text"] = post_text
             slot["chosen_model"] = chosen_model
-            update_slot(slot)
+            try:
+                update_slot(slot)
+            except Exception as e:
+                print(f"[agent] WARNING: failed to persist slot: {e}")
 
             try:
                 log_post({
@@ -410,11 +430,14 @@ def run_agent() -> None:
         slot = state["slot"]
         if slot:
             slot["status"] = "skipped"
-            update_slot(slot)
+            try:
+                update_slot(slot)
+            except Exception as e:
+                print(f"[agent] WARNING: failed to persist slot: {e}")
             try:
                 notify_timeout(state["day"], slot.get("date", ""))
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[agent] notify_timeout failed: {e}")
         state["done"] = True
         print(f"[agent] Skipped: {reason}")
         return {"status": "skipped", "reason": reason}
@@ -463,10 +486,13 @@ def run_agent() -> None:
         {"role": "user", "content": "Run today's LinkedIn posting workflow."}
     ]
 
-    print("[agent] Starting agentic posting loop (Groq tool-use)...")
+    if not os.environ.get("DISCORD_BOT_TOKEN"):
+        _log("WARN", "DISCORD_BOT_TOKEN not set — approval step will auto-skip")
+
+    _log("INFO", "Starting agentic posting loop (Groq tool-use)...")
 
     for step in range(20):
-        print(f"[agent] Step {step + 1}...")
+        _log("INFO", f"Step {step + 1}...")
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -492,7 +518,7 @@ def run_agent() -> None:
         messages.append(assistant_entry)
 
         if not msg.tool_calls:
-            print(f"[agent] Done — {msg.content or '(no message)'}")
+            _log("INFO", f"Done — {msg.content or '(no message)'}")
             break
 
         for tc in msg.tool_calls:
@@ -520,9 +546,9 @@ def run_agent() -> None:
             })
 
         if state["done"]:
-            print("[agent] Workflow complete.")
+            _log("INFO", "Workflow complete.")
             break
 
     else:
-        print("[agent] Max steps reached — forcing skip.")
+        _log("WARN", "Max steps reached — forcing skip.")
         tool_skip_today("Max agent iterations reached without completing workflow")
