@@ -200,7 +200,7 @@ Hard rules:
 """
 
 
-def run_agent(target_date: str | None = None) -> None:
+def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     """Agentic posting loop. Called from cmd_auto() in run.py."""
 
     from scheduler import get_today_slot, get_strategy, update_slot
@@ -363,6 +363,15 @@ def run_agent(target_date: str | None = None) -> None:
         }
 
     def tool_send_for_approval(post_text: str, score: int = 0) -> dict:
+        if preview:
+            print("\n" + "=" * 60)
+            print(f"[PREVIEW] Score: {score}/100  |  Day: {state['day']}")
+            print("=" * 60)
+            print(post_text)
+            print("=" * 60 + "\n")
+            print("[preview] Auto-approving — not sending to Discord.")
+            return {"action": "post", "auto": True}
+
         topic = state["topic"]
         day = state["day"]
         variants = [{"model_key": "llama-70b", "display_name": "Llama 70B", "text": post_text}]
@@ -386,6 +395,12 @@ def run_agent(target_date: str | None = None) -> None:
         slot = state["slot"]
         topic = state["topic"]
         day = state["day"]
+        if preview:
+            print("[preview] Publish skipped — preview mode active.")
+            slot["post_text"] = post_text
+            slot["chosen_model"] = chosen_model
+            state["done"] = True
+            return {"status": "preview", "message": "Post generated and scored — not published."}
         try:
             result = post_to_linkedin(post_text)
             slot["status"] = "posted"

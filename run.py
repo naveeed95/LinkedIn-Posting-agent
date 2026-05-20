@@ -338,11 +338,15 @@ def cmd_post(preview: bool = False, force: bool = False):
             print("Skipped.")
 
 
-def cmd_auto(target_date: str | None = None):
+def cmd_auto(target_date: str | None = None, preview: bool = False):
     """Fully automated run for GitHub Actions. Delegates to agentic loop in agent_runner.py."""
-    _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
+    if not preview:
+        _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
+    else:
+        _validate_env("GROQ_API_KEY")
+        print("[auto] Preview mode — will generate and score but NOT publish to LinkedIn.\n")
     from agent_runner import run_agent
-    run_agent(target_date=target_date)
+    run_agent(target_date=target_date, preview=preview)
 
 
 def main():
@@ -354,7 +358,7 @@ def main():
     elif "stats" in args:
         cmd_stats()
     elif "auto" in args:
-        cmd_auto()
+        cmd_auto(preview="--preview" in args)
     else:
         cmd_post(preview="--preview" in args, force="--test" in args)
 

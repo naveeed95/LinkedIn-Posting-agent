@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: '0 8 * * *'  # 1pm PKT (UTC+5), every day including weekends
   workflow_dispatch:
+    inputs:
+      preview:
+        description: 'Preview mode — generate and score but do NOT post to LinkedIn'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 concurrency:
   group: posting-agent-db
@@ -64,7 +71,12 @@ jobs:
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           SUPADATA_API_KEY: ${{ secrets.SUPADATA_API_KEY }}
           LANDING_PAGE_URL: ${{ secrets.LANDING_PAGE_URL }}
-        run: python run.py auto
+        run: |
+          if [ "${{ github.event.inputs.preview }}" = "true" ]; then
+            python run.py auto --preview
+          else
+            python run.py auto
+          fi
 
       - name: Upload performance DB
         uses: actions/upload-artifact@v4
