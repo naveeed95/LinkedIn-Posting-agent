@@ -200,7 +200,7 @@ Hard rules:
 """
 
 
-def run_agent() -> None:
+def run_agent(target_date: str | None = None) -> None:
     """Agentic posting loop. Called from cmd_auto() in run.py."""
 
     from scheduler import get_today_slot, get_strategy, update_slot
@@ -230,7 +230,15 @@ def run_agent() -> None:
     # ── Tool implementations ───────────────────────────────────────────────────
 
     def tool_get_today_slot() -> dict:
-        slot = get_today_slot()
+        if target_date:
+            from scheduler import load_schedule, _week_start
+            from datetime import date as _date, timedelta
+            d = _date.fromisoformat(target_date)
+            week_key = (d - timedelta(days=d.weekday())).isoformat()
+            week_slots = load_schedule().get(week_key, [])
+            slot = next((s for s in week_slots if s.get("date") == target_date), None)
+        else:
+            slot = get_today_slot()
         if not slot:
             # Fallback: use any pending slot from the current week
             from scheduler import get_week_overview
