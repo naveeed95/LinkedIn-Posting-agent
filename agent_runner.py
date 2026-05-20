@@ -90,7 +90,7 @@ TOOLS = [
             "name": "score_post",
             "description": (
                 "Score a post for engagement potential (0-100). "
-                "Score >=65 is ready to send for approval. Score >=80 is excellent."
+                "Score >=80 is required to send for approval. Below 80 means regenerate with a better hook or stat."
             ),
             "parameters": {
                 "type": "object",
@@ -181,10 +181,10 @@ Strict workflow:
 2. get_analytics_summary() — note best_hook_type and top_hashtags to use.
 3. research_topic(topic_title, keywords) — always research before generating.
 4. generate_post() — generate the post.
-5. score_post(post_text) — evaluate it. The result includes a dynamic `threshold` based on past performance.
-   - score < threshold and attempts < 3: generate_post(hint from score_post advice) then score again.
-   - score >= threshold: proceed to step 6.
-   - score >= 80 is always excellent regardless of threshold.
+5. score_post(post_text) — evaluate it. Threshold is 80.
+   - score < 80 and attempts < 3: generate_post(hint from score_post advice) then score again.
+   - score >= 80: proceed to step 6.
+   - On the 3rd attempt, proceed regardless of score.
 6. send_for_approval(post_text, score) — wait for human decision:
    - "post": publish_post(post_text, chosen_model)
    - "edit": publish_post(custom_text, chosen_model="human-edit")
@@ -351,16 +351,13 @@ def run_agent(target_date: str | None = None) -> None:
         except Exception:
             past = {}
         score = engagement_scorer(post_text, past)
-        # Threshold derived from past performance: 90% of recent avg, clamped 55–75.
-        # Falls back to 62 when no history exists yet.
-        recent_avg = past.get("recent_avg_score", 0)
-        threshold = max(55, min(75, int(recent_avg * 0.9))) if recent_avg > 0 else 62
+        threshold = 80
         return {
             "score": score,
             "threshold": threshold,
-            "verdict": "excellent" if score >= 80 else "good" if score >= threshold else "weak",
-            "ready_to_send": score >= threshold,
-            "advice": "" if score >= threshold else f"Score {score} below threshold {threshold}. Try a more specific hook or add a concrete stat.",
+            "verdict": "excellent" if score >= 80 else "weak",
+            "ready_to_send": score >= 80,
+            "advice": "" if score >= 80 else f"Score {score}/80 required. Try a stronger hook, add a specific number or stat, or make the insight more surprising.",
         }
 
     def tool_send_for_approval(post_text: str, score: int = 0) -> dict:
