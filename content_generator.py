@@ -240,7 +240,7 @@ def _rule_based_score(variant: str, past_performance: dict) -> dict:
 
 
 def engagement_scorer(variant: str, past_performance: dict) -> dict:
-    """Score a LinkedIn post using Llama 70B. Returns {"score": int, "advice": str}.
+    """Score a LinkedIn post using Llama 8B. Returns {"score": int, "advice": str}.
     Falls back to rule-based scoring if the LLM call fails.
     """
     prompt = f"""Score this LinkedIn post for The Tech Tutors — a company that builds AI tools for small businesses.
@@ -266,7 +266,7 @@ Return ONLY valid JSON, nothing else:
 {{"score": <integer 0-100>, "advice": "<one sentence: the single most impactful change to push the score above 80>"}}"""
 
     try:
-        raw = call_model(QUALITY_FIX_MODEL, prompt, max_tokens=120, temperature=0.1)
+        raw = call_model(UTILITY_MODEL, prompt, max_tokens=120, temperature=0.1)
         start = raw.find("{")
         end = raw.rfind("}") + 1
         if start != -1 and end > start:
