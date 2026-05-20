@@ -2,7 +2,8 @@
 Multi-provider LLM router. Each model is a named entity.
 
 Providers used:
-  - Groq         (Llama 3.3 70B, Llama 3.1 8B)  — set GROQ_API_KEY
+  - DeepSeek     (deepseek-chat) — set DEEPSEEK_API_KEY
+  - Groq         (Llama 3.3 70B, Llama 3.1 8B)  — set GROQ_API_KEY (disabled)
 Public API:
   call_model(model_key, prompt, system, max_tokens) -> str
       Run a single named model.
@@ -24,8 +25,10 @@ import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
-from groq import Groq
-import groq as _groq_module
+# from groq import Groq          # disabled — using DeepSeek only
+# import groq as _groq_module    # disabled — using DeepSeek only
+import openai as _openai_module
+from openai import OpenAI as _OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,33 +38,45 @@ load_dotenv()
 # and other importers that only need MODELS / display_name() working without
 # GROQ_API_KEY. The Groq client is created on first dispatch.
 
-_groq: Groq | None = None
+_deepseek: _OpenAI | None = None
 
 
-def _get_groq() -> Groq:
-    global _groq
-    if _groq is None:
-        key = os.environ.get("GROQ_API_KEY", "")
+def _get_deepseek() -> _OpenAI:
+    global _deepseek
+    if _deepseek is None:
+        key = os.environ.get("DEEPSEEK_API_KEY", "")
         if not key:
-            raise EnvironmentError("GROQ_API_KEY is required but not set")
-        _groq = Groq(api_key=key)
-    return _groq
+            raise EnvironmentError("DEEPSEEK_API_KEY is required but not set")
+        _deepseek = _OpenAI(api_key=key, base_url="https://api.deepseek.com")
+    return _deepseek
 
 # ── Model registry ────────────────────────────────────────────────────────────
 # Each entry is keyed by short id and describes display name, provider, and
 # the model id string used by that provider's API.
 
 MODELS = {
-    "llama-70b": {
-        "display":     "Llama 3.3 70B",
-        "provider":    "groq",
-        "model_id":    "llama-3.3-70b-versatile",
+    # "llama-70b": {              # disabled — using DeepSeek only
+    #     "display":     "Llama 3.3 70B",
+    #     "provider":    "groq",
+    #     "model_id":    "llama-3.3-70b-versatile",
+    #     "temperature": 0.8,
+    # },
+    # "llama-8b": {               # disabled — using DeepSeek only
+    #     "display":     "Llama 3.1 8B",
+    #     "provider":    "groq",
+    #     "model_id":    "llama-3.1-8b-instant",
+    #     "temperature": 0.3,
+    # },
+    "deepseek-pro": {
+        "display":     "DeepSeek Chat",
+        "provider":    "deepseek",
+        "model_id":    "deepseek-chat",
         "temperature": 0.8,
     },
-    "llama-8b": {
-        "display":     "Llama 3.1 8B",
-        "provider":    "groq",
-        "model_id":    "llama-3.1-8b-instant",
+    "deepseek-flash": {
+        "display":     "DeepSeek Chat (fast)",
+        "provider":    "deepseek",
+        "model_id":    "deepseek-chat",
         "temperature": 0.3,
     },
 }
@@ -72,21 +87,23 @@ MODELS = {
 # Add/remove model keys here to control how many variants you get per job.
 
 VARIANT_MODELS = {
-    "text":     ["llama-70b"],
-    "carousel": ["llama-70b"],
-    "research": ["llama-70b"],
+    "text":     ["deepseek-pro"],
+    "carousel": ["deepseek-pro"],
+    "research": ["deepseek-pro"],
 }
 
-UTILITY_MODEL     = "llama-8b"   # for engagement scoring, classification
-QUALITY_FIX_MODEL = "llama-70b"  # for banned-word cleanup
-STRATEGY_MODEL    = "llama-70b"  # for weekly planning & topic ranking
+UTILITY_MODEL     = "deepseek-flash"  # for engagement scoring, classification
+QUALITY_FIX_MODEL = "deepseek-pro"   # for banned-word cleanup
+STRATEGY_MODEL    = "deepseek-pro"   # for weekly planning & topic ranking
 
 
 # ── Provider availability ─────────────────────────────────────────────────────
 
 def _provider_available(provider: str) -> bool:
-    if provider == "groq":
-        return bool(os.environ.get("GROQ_API_KEY"))
+    if provider == "deepseek":
+        return bool(os.environ.get("DEEPSEEK_API_KEY"))
+    # if provider == "groq":      # disabled — using DeepSeek only
+    #     return bool(os.environ.get("GROQ_API_KEY"))
     return False
 
 
@@ -105,8 +122,8 @@ def _call_with_retry(
             return _dispatch(provider, model_id, prompt, system, max_tokens, temperature)
         except Exception as e:
             is_retryable = (
-                isinstance(e, (_groq_module.RateLimitError, _groq_module.InternalServerError))
-                or (isinstance(e, _groq_module.APIStatusError) and getattr(e, "status_code", 0) in (429, 500, 502, 503))
+                isinstance(e, (_openai_module.RateLimitError, _openai_module.InternalServerError))
+                or (isinstance(e, _openai_module.APIStatusError) and getattr(e, "status_code", 0) in (429, 500, 502, 503))
                 or any(code in str(e).lower() for code in ("429", "500", "502", "503", "rate limit", "rate_limit", "overloaded"))
             )
             if not is_retryable or attempt == max_retries - 1:
@@ -244,8 +261,10 @@ def _dispatch(
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    if provider == "groq":
-        client = _get_groq()
+    if provider == "deepseek":
+        client = _get_deepseek()
+    # elif provider == "groq":    # disabled — using DeepSeek only
+    #     client = _get_groq()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

@@ -40,67 +40,101 @@ We build the exact AI tools your business needs — automations, web apps, chatb
 
 WRITING_SYSTEM = """
 ═══════════════════════════════════════════
-   LINKEDIN POST MASTERY — COMPLETE RULES
+   LINKEDIN VIRAL POST SYSTEM — FULL RULES
 ═══════════════════════════════════════════
 
+── THE #1 RULE ──────────────────────────────
+LinkedIn shows only the first ~210 characters before "see more."
+Hook + line 2 combined must be under 210 characters.
+If those 2 lines don't make the reader NEED to click, nobody reads the rest.
+The hook is everything — but line 2 seals the click.
+
 ── FORMATTING (non-negotiable) ──────────────
-• Every sentence or thought gets its OWN LINE
+• Every sentence gets its OWN LINE — maximum 12 words per line
 • One blank line between every paragraph/section
 • Bullet points: each on its own line, starting with •
-• Maximum 1-2 sentences per paragraph
-• No markdown bold (**text**) — LinkedIn ignores it
-• No italics, no headers
-• Plain text only
+• No markdown bold (**text**) — LinkedIn strips it
+• No italics, no headers, no em-dashes
+• Plain text only — white space IS the design
 
 ── STRUCTURE (follow exactly) ───────────────
-LINE 1:    Hook — single punchy line, max 12 words
+LINE 1:    Hook — ONE punchy line, max 12 words, ends WITHOUT a period
            [blank line]
-LINE 2-3:  Context — why this matters RIGHT NOW (1-2 sentences)
+LINE 2:    Tension — the pain or paradox that makes them click "see more"
+           (Lines 1+2 combined must be under 210 characters)
            [blank line]
-LINES 4-8: Body — 3-5 short punchy lines, one insight each
+LINES 3-7: Body — 4-6 short punchy lines, one concrete insight each
+           Include 1 SAVE-WORTHY line (stat, formula, or tool name to screenshot)
+           Mix bullets and short paragraphs, never walls of text
            [blank line]
-LINE 9:    The Insight — one sentence that reframes how they see something
+LINE 8:    The Reframe — ONE sentence that flips how they see the problem
            [blank line]
-LINE 10:   Question — one genuine specific question
+LINE 9:    Depth question — specific, personal, requires 15+ word answer
            [blank line]
-LINE 11:   CTA — one line, soft sell only
+LINE 10:   Soft CTA — one line max, no exclamation marks
            [blank line]
-LINE 12:   Hashtags — 3 to 5, on ONE line
+LINE 11:   Hashtags — 1 to 3 max, on ONE line, space-separated
 
-── HOOK FORMULAS ────────────────────────────
-VARIANT 1 — QUESTION HOOK:
-• Start with a thought-provoking question that challenges assumptions
-• Example: "What if the tool your competitor is using cost nothing?"
+── HOOK FORMULAS (pick the ONE that hits hardest for THIS topic) ──
+1. NUMBER SHOCK:    "73% of small businesses are paying for software they don't need"
+2. CALL OUT:        "If your team still does [task] manually, this is for you"
+3. CONTRARIAN:      "Stop using [popular thing]. Here's what actually works."
+4. BEFORE/AFTER:    "6 months ago: 14 hours on invoices. Today: 40 minutes."
+5. SECRET/INSIDER:  "Most business owners don't know their [tool] has a free AI mode"
+6. HARD TRUTH:      "Your [tool] is costing you more than your rent"
+7. STORY OPEN:      "A client came to us spending $3,200/month on software."
 
-VARIANT 2 — BOLD STATEMENT HOOK:
-• Start with a counterintuitive or surprising claim
-• Example: "Your spreadsheet is the most expensive tool in your business."
+── FIRST 3 WORDS RULE ───────────────────────
+The first 3 words determine click-through on mobile.
+Start with: a number, "Stop", "Most", "Your", "Why", "A [noun]"
+NEVER start with: "I", "We", "In today's", "As a", "It's"
 
 ── BODY CONTENT RULES ───────────────────────
-• Use REAL specifics — numbers, time saved, costs cut, tasks automated
-• Each bullet = one standalone insight
-• Short words beat long words every time
-• Write at grade 6 reading level
+• Every bullet = one SPECIFIC, STANDALONE insight with a number or name
+• Short words beat long words — if a 5-year-old wouldn't say it, cut it
+• Grade 6 reading level — Hemingway short sentences win every time
+• Use tool names, dollar amounts, hours saved, % improvements
+• One idea per line — readers skim vertically, not horizontally
 
-── QUESTION RULES ───────────────────────────
-• NEVER: "Do you agree?" / "What do you think?" / "Tag someone who..."
-• GOOD: "Which of these tasks is eating the most time in your business?"
+── COMMENT ENGINEERING (critical — 15+ word comments weighted 2.5x by algorithm) ──
+The closing question MUST force a specific, personal answer of 15+ words.
+• BAD (yes/no): "Do you agree?" / "Have you tried this?"
+• BAD (vague): "What do you think?" / "Thoughts?" / "Tag someone..."
+• BAD (engagement bait — -60% reach): "Like if you agree" / "Tag 3 people"
+• GOOD: "How many hours a week does your team spend on [specific task] — and what would you do with that time back?"
+• GOOD: "What's the one manual process in your business you've been meaning to automate for months but haven't yet — and what's stopped you?"
+• GOOD: "If you could eliminate one bottleneck in your workflow this week, what would it be and why?"
+
+── SAVES ENGINEERING (saves now outrank likes in algorithm weight) ────────────
+Include exactly ONE of these in the body — something users will screenshot:
+• A specific formula: "Time saved = [X hrs/week] × $[hourly rate] × 52 = real annual cost"
+• A concrete before/after: "Manual: 14 hrs/week. Automated: 40 min/week."
+• A specific tool + use case: "[Tool name] + [use case] = [specific outcome]"
+• A counterintuitive stat that reframes their thinking
+
+── DEPTH ENGINEERING (algorithm measures 30+ second dwell time) ───────────────
+Line 2 must TEASE what's in the body — create a loop the brain needs to close.
+Example: "Here's what the $28/month AI stack actually looks like." → reader MUST scroll to see the stack.
+Never give away the payoff in the first 2 lines — earn every scroll.
 
 ── BANNED WORDS & PHRASES ───────────────────
 Never use: delve, leverage, synergy, game-changer, revolutionary,
            cutting-edge, in today's fast-paced world, are you ready to,
            I'm excited to share, at the end of the day, the future is now,
-           it's no secret that, in conclusion, to summarize,
+           it's no secret that, in conclusion, to summarize, utilize,
+           unlock, empower, seamless, robust, scalable, innovative,
            The Tech Tutors as a standalone line
 
 ── CHARACTER TARGETS ────────────────────────
-• Hook: under 80 characters
+• Hook line: under 70 characters
 • Total post: 1,200 – 1,800 characters
 • No URLs in post body — links go in FIRST COMMENT only
 
 ── HASHTAG RULES ────────────────────────────
-• 3-5 hashtags, last line only, space-separated
-• Mix: 1 broad + 2 niche + 1 brand (#TheTechTutors)
+• 1-3 hashtags MAX — 2026 research shows 3+ hashtags REDUCE reach
+• Last line only, space-separated
+• Pick: 1 niche + 1 brand (#TheTechTutors)
+• Never hashtag a word mid-post
 """
 
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -133,7 +167,7 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
     if system_extra:
         system += "\n\n" + system_extra
     return call_with_fallback(
-        model_keys = [STRATEGY_MODEL, "llama-8b"],
+        model_keys = [STRATEGY_MODEL],
         prompt     = prompt,
         system     = system,
         max_tokens = max_tokens,
@@ -175,7 +209,7 @@ def _fix_post_quality(raw: str) -> str:
 2. Remove "The Tech Tutors" if it appears as a standalone line
 3. Remove any URLs or links from the post body
 4. Replace generic question closers ("Do you agree?", "What do you think?", "Tag someone") with a specific question
-5. Hashtags on last line only, 3-5 max
+5. Hashtags on last line only, 1-3 max
 6. Keep length 1,200-1,800 characters
 
 Return ONLY the fixed post. No explanations.
@@ -223,7 +257,7 @@ def _rule_based_score(variant: str, past_performance: dict) -> dict:
         score -= 15
 
     hashtag_count = sum(1 for w in variant.split() if w.startswith("#"))
-    if 3 <= hashtag_count <= 5:
+    if 1 <= hashtag_count <= 3:
         score += 10
     else:
         score -= 5
@@ -250,17 +284,20 @@ Target audience: SMB owners, 30–55, time-pressed, skeptical of hype. They want
 POST TO SCORE:
 {variant}
 
-Score 0–100 across these five areas:
+Score 0–100 across these seven areas (2026 LinkedIn algorithm weights):
 
-1. Hook (0–25): Is the first line punchy, specific, and impossible to ignore? Vague openers score low.
-2. Specificity (0–25): Does it cite real numbers, timeframes, costs, or concrete outcomes? "A lot" = 0 pts.
-3. Readability (0–20): Short sentences, one thought per line, grade 6 reading level, no jargon?
-4. Format (0–15): 3–5 hashtags on the last line only, 1,200–1,800 characters total, no URLs in body, no markdown bold (**text**)?
-5. Engagement trigger (0–15): Does it end with a genuine, specific question — NOT "do you agree?" or "what do you think?"?
+1. Hook (0–20): First line — punchy, specific, impossible to ignore? Starts with number/"Stop"/"Most"/"Your"/"Why"? Vague openers = 0.
+2. See-More Click (0–15): Lines 1+2 combined under 210 chars AND line 2 teases the body without giving away the payoff?
+3. Specificity (0–20): Real numbers, tool names, dollar amounts, hours saved, concrete outcomes? "A lot" / "many" = 0.
+4. Saves potential (0–10): Is there ONE line specific/actionable enough to screenshot — a formula, before/after, or tool+outcome?
+5. Comment quality trigger (0–15): Does the closing question FORCE a 15+ word personal answer? Yes/no questions = 0. "Do you agree" = 0.
+6. Readability (0–10): Short sentences, one thought per line, grade 6 level, no jargon, white space between sections?
+7. Format (0–10): 1–3 hashtags on last line only, 1,200–1,800 characters, no URLs in body, no markdown bold?
 
 Automatic deductions:
-- Banned word found (delve, leverage, synergy, game-changer, revolutionary, cutting-edge): −10
+- Banned word (delve, leverage, synergy, game-changer, revolutionary, cutting-edge, seamless, robust): −10
 - URL in post body: −10
+- Engagement bait ("like if", "tag someone", "comment a number"): −15
 
 Return ONLY valid JSON, nothing else:
 {{"score": <integer 0-100>, "advice": "<one sentence: the single most impactful change to push the score above 80>"}}"""
@@ -487,19 +524,51 @@ def generate_text_post_variants(
     if topic.get("research_context"):
         research_block = f"\nLATEST RESEARCH FOUND TODAY (use specific facts/stats from these sources):\n{topic['research_context']}\n"
 
-    prompt = f"""Write ONE LinkedIn post for The Tech Tutors.
+    prompt = f"""Write ONE high-performing LinkedIn post for The Tech Tutors.
 
 TOPIC: {topic['title']}
 ANGLE: {topic['angle']}
 SOURCE URL (first comment only, NOT in post body): {topic['source_url']}
 {hint_block}{hashtag_block}{research_block}{previous_block}
-Write your single best version. Pick whichever hook style works best for THIS topic — question, bold statement, story, surprising fact, whatever pulls strongest. Make it sound like *you* wrote it, in your own voice.
+━━━ YOUR EXECUTION CHECKLIST ━━━
 
-Follow all formatting and structure rules exactly.
-Every sentence on its own line. Blank line between sections.
+HOOK (line 1):
+Choose the formula that hits HARDEST for this specific topic:
+1. NUMBER SHOCK:   "73% of small businesses are paying for software they don't need"
+2. CALL OUT:       "If your team still does [task] manually, read this"
+3. CONTRARIAN:     "Stop using [popular thing]. Here's what actually works"
+4. BEFORE/AFTER:   "6 months ago: 14 hours on invoices. Today: 40 minutes"
+5. SECRET:         "Most business owners don't know their [tool] has a free AI mode"
+6. HARD TRUTH:     "Your [tool] is costing you more than your rent"
+7. STORY OPEN:     "A client came to us spending $3,200/month on software"
+Start with: a number, "Stop", "Most", "Your", "Why", or "A [noun]"
+NEVER start with: "I", "We", "In today's", "As a", "It's"
 
-REMINDER: No links in post body. No standalone "The Tech Tutors" line. Hashtags last line only.
-Return ONLY the post text — no preamble, no explanations, no labels."""
+SEE MORE THRESHOLD:
+Lines 1+2 combined must be under 210 characters.
+Line 2 must TEASE what's coming — create a loop the brain needs to close.
+NEVER give away the payoff in the first 2 lines. Earn every scroll.
+
+BODY MUST CONTAIN:
+• 4-6 lines, one specific insight each
+• ONE save-worthy line: a formula, before/after number, or specific tool+outcome
+• At least one dollar amount, percentage, or hours-saved figure
+• A tool name or specific business type (not generic "businesses")
+
+CLOSING QUESTION (most important for algorithm reach):
+Must force a 15+ word personal answer — not a yes/no.
+GOOD: "How many hours a week does your team spend on [task] — and what would you do with that time back?"
+GOOD: "What's the one manual process you've been meaning to automate for months — and what's stopped you?"
+BAD: "Do you agree?" / "What do you think?" / "Thoughts?" / "Tag someone"
+
+HARD RULES:
+• No links in post body
+• No "The Tech Tutors" as standalone line
+• 1-3 hashtags on last line only
+• No "like if you agree" or any engagement bait
+• Total: 1,200–1,800 characters
+
+Return ONLY the post text — no preamble, no labels, no explanations."""
 
     system = BRAND_CONTEXT + "\n\n" + WRITING_SYSTEM
     if rules_prompt:

@@ -256,10 +256,11 @@
         "why": "Action-oriented Wednesday content with a clear process SMB owners can start today"
       },
       "format": "text",
-      "post_text": null,
+      "post_text": "What if you could automate a task in 20 minutes?\n \nYou're probably wasting hours each week on repetitive tasks that eat into your productivity and profits.\n \n• Most automations can be set up with no code and no developer.\n• You can use pre-built templates to get started quickly.\n• The right tools can help you automate tasks in minutes, not hours.\n \nThe key to successful automation is identifying the right task to start with.\n \nWhich of these tasks is eating the most time in your business?\n \nTry automating one task this week and see the impact for yourself.\nWhat task will you automate first to boost your productivity?\n#AIautomation #productivityhacks #automationmadeeasy",
       "design_brief": null,
       "status": "pending",
-      "post_urn": null
+      "post_urn": null,
+      "chosen_model": "llama-70b"
     },
     {
       "day": "Thursday",
@@ -271,10 +272,11 @@
         "why": "Data-driven Thursday post with specific cost numbers that make owners stop scrolling"
       },
       "format": "text",
-      "post_text": null,
+      "post_text": "A client came to us spending $3,200 a month on software\n\nThey replaced it with a $28 AI stack. Here is exactly what that looked like\n\nManual bookkeeping: 12 hours a week → automated in 40 minutes\nCustomer support tickets: 3-day response time → instant answers\nEmail follow-ups: 80% of them now write themselves\nCRM data entry: completely eliminated with an AI agent\nReporting dashboards: built once, updates in real time\n\nThe $28 stack: ChatGPT Plus ($20/month) + Zapier ($8/month) + custom GPTs\n\nThe formula: hours saved per week x your billable rate x 52 weeks = real cost of doing it manually\n\nMost business owners treat software subscriptions like fixed costs\n\nThey are not. They are a choice between paying for features you use and paying for outcomes you need\n\nWhat is the one manual process in your business you have been meaning to automate for months — and what has actually stopped you from doing it\n\n#AI #SmallBusiness",
       "design_brief": null,
       "status": "pending",
-      "post_urn": null
+      "post_urn": null,
+      "chosen_model": "deepseek-pro"
     },
     {
       "day": "Friday",
