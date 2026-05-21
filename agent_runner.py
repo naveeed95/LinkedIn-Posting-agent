@@ -1,207 +1,19 @@
 """
-Agentic LinkedIn posting runner using DeepSeek tool-use (deepseek-chat).
-The LLM orchestrates the full workflow: research → generate → score → approve → post.
+Direct posting pipeline for LinkedIn (no LLM orchestration).
+Workflow: get_slot → analytics → research → generate → score → approve → publish.
 Called from run.py cmd_auto().
 """
 
-import json
 import os
 from datetime import datetime
-
-from openai import OpenAI
 
 
 def _log(level: str, msg: str) -> None:
     print(f"[agent][{level}] {datetime.now().strftime('%H:%M:%S')} {msg}")
 
-# ── Tool schemas ───────────────────────────────────────────────────────────────
-
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_today_slot",
-            "description": (
-                "Get today's scheduled topic from the weekly plan. "
-                "Returns slot info or a status indicating nothing to post."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_analytics_summary",
-            "description": (
-                "Get past performance data: best hook types, best posting days, top hashtags. "
-                "Use to inform angle and hook choice before generating."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "research_topic",
-            "description": (
-                "Fetch fresh articles and data about today's topic. "
-                "Always call this before generating a post."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic_title": {
-                        "type": "string",
-                        "description": "Topic title to research",
-                    },
-                    "keywords": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Focus keywords for targeted search",
-                    },
-                },
-                "required": ["topic_title"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_post",
-            "description": (
-                "Generate a LinkedIn post for today's topic. "
-                "Returns post text and metadata. Max 3 calls total per run."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "hint": {
-                        "type": "string",
-                        "description": "Optional improvement hint (e.g. 'add a concrete stat', 'punchier hook')",
-                    },
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "score_post",
-            "description": (
-                "Score a post for engagement potential (0-100). "
-                "Score >=80 is required to send for approval. Below 80 means regenerate with a better hook or stat."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "post_text": {
-                        "type": "string",
-                        "description": "Post text to score",
-                    },
-                },
-                "required": ["post_text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "send_for_approval",
-            "description": (
-                "Send post to Discord for human approval. Blocks until response (up to 120 min). "
-                "Returns action: post / edit / regenerate / skip / timeout, "
-                "plus optional hint or custom_text."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "post_text": {
-                        "type": "string",
-                        "description": "Post text to send for approval",
-                    },
-                    "score": {
-                        "type": "integer",
-                        "description": "Engagement score for context",
-                    },
-                },
-                "required": ["post_text", "score"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "publish_post",
-            "description": (
-                "Publish the approved post to LinkedIn, log analytics, post source comment. "
-                "Call only after approval from send_for_approval."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "post_text": {
-                        "type": "string",
-                        "description": "Final post text to publish",
-                    },
-                    "chosen_model": {
-                        "type": "string",
-                        "description": "Model key that generated this post",
-                    },
-                },
-                "required": ["post_text"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "skip_today",
-            "description": "Mark today's slot as skipped and notify Discord.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "Reason for skipping",
-                    },
-                },
-                "required": ["reason"],
-            },
-        },
-    },
-]
-
-AGENT_SYSTEM = """You are The Tech Tutors autonomous LinkedIn posting agent.
-
-Goal: research today's topic, generate a high-quality post, get human approval via Discord, publish to LinkedIn.
-
-Strict workflow:
-1. get_today_slot() — if status is no_slot or already_posted, respond with a text message saying why you stopped and call NO more tools.
-2. get_analytics_summary() — note best_hook_type and top_hashtags to use.
-3. research_topic(topic_title, keywords) — always research before generating.
-4. generate_post() — generate the post.
-5. score_post(post_text) — evaluate it. Threshold is 80.
-   - score < 80 and attempts < 3: generate_post(hint from score_post advice) then score again.
-   - score >= 80: proceed to step 6.
-   - On the 3rd attempt, proceed regardless of score.
-6. send_for_approval(post_text, score) — wait for human decision:
-   - "post": publish_post(post_text, chosen_model)
-   - "edit": publish_post(custom_text, chosen_model="human-edit")
-   - "regenerate": generate_post(hint=hint_from_decision), score again, send_for_approval again.
-   - "skip" or "timeout": skip_today(reason)
-7. After publish_post or skip_today succeeds, stop — do not call any more tools.
-
-Hard rules:
-- Never skip step 3 (research).
-- Max 3 generate_post calls total across all retries.
-- Score >= 80 is excellent — do not regenerate just for a higher number.
-- Never call publish_post without prior approval from send_for_approval.
-"""
-
 
 def run_agent(target_date: str | None = None, preview: bool = False) -> None:
-    """Agentic posting loop. Called from cmd_auto() in run.py."""
+    """Direct posting pipeline. Called from cmd_auto() in run.py."""
 
     from scheduler import get_today_slot, get_strategy, update_slot
     from content_generator import engagement_scorer, generate_text_post_variants
@@ -240,7 +52,6 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         else:
             slot = get_today_slot()
         if not slot:
-            # Fallback: use any pending slot from the current week
             from scheduler import get_week_overview
             week_slots = get_week_overview()
             pending = [s for s in week_slots if s.get("topic") and s.get("status") == "pending"]
@@ -248,7 +59,6 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                 slot = pending[0]
                 print(f"[agent] No slot for today — falling back to pending slot: {slot['day']} ({slot['date']})")
             else:
-                # No plan at all — alert the user via Discord
                 try:
                     from discord_bot import notify_workflow_failure
                     notify_workflow_failure(
@@ -456,117 +266,72 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         print(f"[agent] Skipped: {reason}")
         return {"status": "skipped", "reason": reason}
 
-    # ── Tool dispatcher ────────────────────────────────────────────────────────
+    # ── Direct pipeline ────────────────────────────────────────────────────────
 
-    _DISPATCH = {
-        "get_today_slot":        lambda a: tool_get_today_slot(),
-        "get_analytics_summary": lambda a: tool_get_analytics_summary(),
-        "research_topic":        lambda a: tool_research_topic(**a),
-        "generate_post":         lambda a: tool_generate_post(**a),
-        "score_post":            lambda a: tool_score_post(**a),
-        "send_for_approval":     lambda a: tool_send_for_approval(**a),
-        "publish_post":          lambda a: tool_publish_post(**a),
-        "skip_today":            lambda a: tool_skip_today(**a),
-    }
+    _log("INFO", "Starting posting pipeline...")
 
-    def execute_tool(name: str, args: dict):
-        fn = _DISPATCH.get(name)
-        if not fn:
-            return {"error": f"Unknown tool: {name}"}
-        try:
-            return fn(args)
-        except Exception as e:
-            return {"error": f"Tool {name} crashed: {e}"}
+    # 1. Slot
+    slot_result = tool_get_today_slot()
+    _log("INFO", f"Slot status: {slot_result['status']}")
+    if slot_result["status"] in ("no_slot", "already_posted"):
+        return
 
-    # ── Agent loop ─────────────────────────────────────────────────────────────
+    # 2. Analytics (for hint context in generation)
+    tool_get_analytics_summary()
 
-    # Fetch LinkedIn algorithm rules and inject into system prompt
-    rules_suffix = ""
-    try:
-        from linkedin_rules_fetcher import build_rules_prompt, fetch_rules
-        rules_data = fetch_rules()
-        rules_suffix = build_rules_prompt(rules_data, max_chars=600)
-        if rules_suffix:
-            print("[agent] LinkedIn rules injected into system prompt.")
-    except Exception as e:
-        print(f"[agent] Rules fetch skipped: {e}")
+    # 3. Research
+    topic_title = state["topic"].get("title", "")
+    keywords = state["strategy"].get("focus_keywords", [])
+    research_result = tool_research_topic(topic_title, keywords)
+    _log("INFO", f"Research: {research_result.get('sources_found', 0)} sources")
 
-    system_prompt = AGENT_SYSTEM
-    if rules_suffix:
-        system_prompt = AGENT_SYSTEM + "\n\n" + rules_suffix
+    # 4–5. Generate + score (up to 3 attempts, stop early if score >= 80)
+    post_text = ""
+    score = 0
+    hint = ""
+    for attempt in range(3):
+        gen = tool_generate_post(hint=hint)
+        if "error" in gen:
+            _log("ERROR", f"Generation failed: {gen['error']}")
+            tool_skip_today(f"Generation failed: {gen['error']}")
+            return
+        post_text = gen["post_text"]
 
-    client = OpenAI(
-        api_key=os.environ.get("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com",
-        timeout=90.0,
-    )
-    messages: list[dict] = [
-        {"role": "user", "content": "Run today's LinkedIn posting workflow."}
-    ]
+        scored = tool_score_post(post_text)
+        score = scored["score"]
+        _log("INFO", f"Attempt {attempt + 1}/3 — score {score}/100")
 
-    if not os.environ.get("DISCORD_BOT_TOKEN"):
-        _log("WARN", "DISCORD_BOT_TOKEN not set — approval step will auto-skip")
-
-    _log("INFO", "Starting agentic posting loop (DeepSeek tool-use)...")
-
-    for step in range(20):
-        _log("INFO", f"Step {step + 1}...")
-
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "system", "content": system_prompt}] + messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            max_tokens=2048,
-            temperature=0.2,
-        )
-
-        msg = response.choices[0].message
-
-        assistant_entry: dict = {"role": "assistant", "content": msg.content or ""}
-        if msg.tool_calls:
-            assistant_entry["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ]
-        messages.append(assistant_entry)
-
-        if not msg.tool_calls:
-            _log("INFO", f"Done — {msg.content or '(no message)'}")
+        if score >= 80 or attempt == 2:
             break
+        hint = scored.get("advice") or "punchier hook, add a specific stat or number"
 
-        for tc in msg.tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments or "{}") or {}
-            except json.JSONDecodeError as e:
-                print(f"[agent] Malformed tool args for {name}: {e} — skipping")
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps({"error": "malformed arguments — please retry with valid JSON"}),
-                })
-                continue
-            arg_preview = ", ".join(f"{k}={repr(v)[:40]}" for k, v in args.items())
-            print(f"[agent]   -> {name}({arg_preview})")
+    # 6–7. Approval + publish (loop handles regenerate-after-approval)
+    while True:
+        decision = tool_send_for_approval(post_text, score)
+        action = decision.get("action", "skip")
 
-            result = execute_tool(name, args)
-            print(f"[agent]   <- {json.dumps(result, default=str)[:400]}")
+        if action == "post":
+            tool_publish_post(post_text)
+            return
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": json.dumps(result, default=str),
-            })
+        elif action == "edit":
+            custom = decision.get("custom_text", "").strip()
+            tool_publish_post(custom or post_text, chosen_model="human-edit")
+            return
 
-        if state["done"]:
-            _log("INFO", "Workflow complete.")
-            break
+        elif action == "regenerate" and state["generate_count"] < 3:
+            gen = tool_generate_post(hint=decision.get("hint", ""))
+            if "error" in gen:
+                _log("ERROR", f"Regeneration failed: {gen['error']}")
+                tool_skip_today(f"Regeneration failed: {gen['error']}")
+                return
+            post_text = gen["post_text"]
+            scored = tool_score_post(post_text)
+            score = scored["score"]
+            _log("INFO", f"Regenerated — score {score}/100")
+            # loop back to send_for_approval with new post
 
-    else:
-        _log("WARN", "Max steps reached — forcing skip.")
-        tool_skip_today("Max agent iterations reached without completing workflow")
+        else:
+            reason = "max regenerations reached" if action == "regenerate" else action
+            tool_skip_today(reason)
+            return
