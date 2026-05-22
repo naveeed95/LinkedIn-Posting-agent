@@ -1,0 +1,74 @@
+name: Watchdog — Weekly Plan
+
+on:
+  schedule:
+    - cron: '0 14 * * 0'  # Sunday 2pm UTC = 7pm PKT — 1h after weekly_plan cron
+    - cron: '0 16 * * 0'  # Sunday 4pm UTC = 9pm PKT — fallback
+  workflow_dispatch:
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check if weekly plan ran today
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "ERROR: GH_PAT secret is not set"
+            exit 1
+          fi
+          TODAY=$(date -u +%Y-%m-%d)
+          RESULT=$(curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/weekly_plan.yml/runs?per_page=10" \
+            | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    runs = data.get('workflow_runs', [])
+    today = '$(date -u +%Y-%m-%d)'
+    for r in runs:
+        if r['created_at'].startswith(today) and r['status'] in ('completed', 'in_progress'):
+            print('found')
+            break
+except Exception as e:
+    print(f'parse error: {e}', file=sys.stderr)
+")
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          echo "Today: $TODAY — plan run found: ${RESULT:-none}"
+
+      - name: Trigger weekly plan if missing
+        if: steps.check.outputs.result != 'found'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: |
+          echo "No weekly plan run found today — triggering workflow_dispatch"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/weekly_plan.yml/dispatches" \
+            -d '{"ref": "master"}')
+          echo "GitHub API response: $HTTP_CODE"
+          if [ "$HTTP_CODE" = "204" ]; then
+            echo "Triggered successfully"
+            curl -s -X POST \
+              -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
+              -H "Content-Type: application/json" \
+              "https://discord.com/api/v10/channels/$DISCORD_ANALYTICS_CHANNEL_ID/messages" \
+              -d "{\"content\": \"⚠️ **Watchdog triggered weekly plan** — GitHub cron missed the 1pm UTC Sunday schedule. Triggered at $(date -u +%H:%M) UTC.\"}" || true
+          else
+            echo "Trigger failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Skip message
+        if: steps.check.outputs.result == 'found'
+        run: echo "Weekly plan already ran today — nothing to do"

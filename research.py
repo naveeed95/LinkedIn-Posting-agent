@@ -13,9 +13,8 @@ Other free APIs:
   - Hacker News Algolia API
 
 Optional (API key required):
-  - Tavily semantic search (TAVILY_API_KEY)
+  - Tavily semantic search (TAVILY_API_KEY) — also used for YouTube broad search
   - Exa neural search (EXA_API_KEY)
-  - Supadata YouTube transcripts (SUPADATA_API_KEY)
 
 All sources merged and deduplicated before returning.
 """
@@ -192,9 +191,8 @@ def fetch_huggingface_trending(limit: int = 10) -> list[dict]:
 
 def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
     since = int(time.time()) - days_back * 86400
-    # Run multiple short queries — long multi-word queries + date filter return 0 on HN Algolia
-    hn_queries = ["AI", "LLM", "automation business", "artificial intelligence",
-                  "small business AI", "AI tools productivity"]
+    # Single-word / brand queries only — multi-word + date filter returns 0 on HN Algolia
+    hn_queries = ["AI", "LLM", "GPT", "Claude", "automation", "OpenAI", "Gemini"]
     items: list[dict] = []
     seen: set[str] = set()
     per_query = max(4, max_items // len(hn_queries))

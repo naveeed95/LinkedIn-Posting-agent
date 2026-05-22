@@ -163,13 +163,14 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         result = engagement_scorer(post_text, past)
         score = result["score"]
         advice = result.get("advice", "")
-        threshold = 80
+        recent_avg = past.get("recent_avg_score", 0)
+        threshold = max(55, min(75, round(recent_avg * 0.9))) if recent_avg > 0 else 62
         return {
             "score": score,
             "threshold": threshold,
-            "verdict": "excellent" if score >= 80 else "weak",
-            "ready_to_send": score >= 80,
-            "advice": "" if score >= 80 else advice,
+            "verdict": "excellent" if score >= threshold else "weak",
+            "ready_to_send": score >= threshold,
+            "advice": "" if score >= threshold else advice,
         }
 
     def tool_send_for_approval(post_text: str, score: int = 0) -> dict:
@@ -301,7 +302,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         score = scored["score"]
         _log("INFO", f"Attempt {attempt + 1}/3 — score {score}/100")
 
-        if score >= 80 or attempt == 2:
+        if scored["ready_to_send"] or attempt == 2:
             break
         hint = scored.get("advice") or "punchier hook, add a specific stat or number"
 
