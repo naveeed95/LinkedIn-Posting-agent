@@ -68,7 +68,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                 except Exception:
                     pass
                 return {"status": "no_slot", "message": "No slot planned for today. Run plan first."}
-        if slot.get("status") == "posted":
+        if slot.get("status") in ("posted", "skipped"):
             return {"status": "already_posted", "date": slot["date"]}
         if slot.get("post_urn"):
             slot["status"] = "posted"

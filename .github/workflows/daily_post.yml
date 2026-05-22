@@ -57,7 +57,33 @@ jobs:
           path: .
         continue-on-error: true
 
+      - name: Skip if already posted today
+        id: dedup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RESULT=$(curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/daily_post.yml/runs?per_page=10&status=success" \
+            | python3 -c "
+          import json, sys
+          try:
+              data = json.load(sys.stdin)
+              today = '$(date -u +%Y-%m-%d)'
+              current = '${{ github.run_id }}'
+              for r in data.get('workflow_runs', []):
+                  if str(r['id']) != current and r['created_at'].startswith(today):
+                      print('skip')
+                      break
+          except Exception as e:
+              print(f'dedup check error: {e}', file=sys.stderr)
+          ")
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          [ "$RESULT" = "skip" ] && echo "Already posted today — skipping duplicate run." || echo "No duplicate found — proceeding."
+
       - name: Run auto post
+        if: steps.dedup.outputs.result != 'skip'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
