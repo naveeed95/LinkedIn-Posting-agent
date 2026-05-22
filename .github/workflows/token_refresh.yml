@@ -31,7 +31,7 @@ jobs:
           LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
           LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
           LINKEDIN_REFRESH_TOKEN: ${{ secrets.LINKEDIN_REFRESH_TOKEN }}
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          GITHUB_PAT: ${{ secrets.GH_PAT }}
           GITHUB_REPO: ${{ github.repository }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
