@@ -21,6 +21,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     from linkedin_poster import post_first_comment, post_to_linkedin
     from analytics_tracker import get_performance_summary, get_top_hashtags, log_post
     from discord_bot import (
+        notify_auto_post,
         notify_timeout,
         send_approval_message,
         send_posted_confirmation,
@@ -331,6 +332,15 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             score = scored["score"]
             _log("INFO", f"Regenerated — score {score}/100")
             # loop back to send_for_approval with new post
+
+        elif action == "timeout":
+            _log("INFO", "Approval timeout — auto-publishing variant 1.")
+            try:
+                notify_auto_post(state["day"], (state["slot"] or {}).get("date", ""))
+            except Exception:
+                pass
+            tool_publish_post(post_text)
+            return
 
         else:
             reason = "max regenerations reached" if action == "regenerate" else action

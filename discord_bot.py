@@ -560,6 +560,13 @@ def notify_timeout(day: str, date_str: str) -> None:
     )
 
 
+def notify_auto_post(day: str, date_str: str) -> None:
+    _send_message(
+        _channel("DISCORD_APPROVALS_CHANNEL_ID"),
+        f"⏱️ **No response after 2 hours** ({day} {date_str}) — auto-posting variant 1 now.",
+    )
+
+
 def notify_workflow_failure(message: str) -> None:
     _send_message(_channel("DISCORD_ANALYTICS_CHANNEL_ID"), message)
 
