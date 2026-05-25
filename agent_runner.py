@@ -1,11 +1,11 @@
 """
-Direct posting pipeline for LinkedIn (no LLM orchestration).
-Workflow: get_slot → analytics → research → generate → score → approve → publish.
+Direct posting pipeline for LinkedIn — no weekly plan required.
+Workflow: research → pick topic → deep research → generate → score → approve → publish.
 Called from run.py cmd_auto().
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 
 def _log(level: str, msg: str) -> None:
@@ -15,11 +15,10 @@ def _log(level: str, msg: str) -> None:
 def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     """Direct posting pipeline. Called from cmd_auto() in run.py."""
 
-    from scheduler import get_today_slot, get_strategy, update_slot
-    from content_generator import engagement_scorer, generate_text_post_variants
-    from research import fetch_deep_topic_research
+    from content_generator import engagement_scorer, generate_text_post_variants, pick_daily_topic
+    from research import fetch_trending_topics, fetch_deep_topic_research
     from linkedin_poster import post_first_comment, post_to_linkedin
-    from analytics_tracker import get_performance_summary, get_top_hashtags, log_post
+    from analytics_tracker import get_performance_summary, get_top_hashtags, get_topic_history, log_post
     from discord_bot import (
         notify_auto_post,
         notify_timeout,
@@ -28,13 +27,12 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         wait_for_approval,
     )
 
-    _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    today = date.fromisoformat(target_date) if target_date else date.today()
 
     state: dict = {
-        "slot": None,
         "topic": None,
-        "day": None,
-        "strategy": {},
+        "day": today.strftime("%A"),
+        "date": today.isoformat(),
         "previous_posts": [],
         "generate_count": 0,
         "done": False,
@@ -42,57 +40,57 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
     # ── Tool implementations ───────────────────────────────────────────────────
 
-    def tool_get_today_slot() -> dict:
-        if target_date:
-            from scheduler import load_schedule, _week_start
-            from datetime import date as _date, timedelta
-            d = _date.fromisoformat(target_date)
-            week_key = (d - timedelta(days=d.weekday())).isoformat()
-            week_slots = load_schedule().get(week_key, [])
-            slot = next((s for s in week_slots if s.get("date") == target_date), None)
-        else:
-            slot = get_today_slot()
-        if not slot:
-            from scheduler import get_week_overview
-            week_slots = get_week_overview()
-            pending = [s for s in week_slots if s.get("topic") and s.get("status") == "pending"]
-            if pending:
-                slot = pending[0]
-                print(f"[agent] No slot for today — falling back to pending slot: {slot['day']} ({slot['date']})")
-            else:
-                try:
-                    from discord_bot import notify_workflow_failure
-                    notify_workflow_failure(
-                        "⚠️ **No content plan for this week** — run `python run.py plan` "
-                        "to generate the week's schedule, then re-trigger the daily post."
-                    )
-                except Exception:
-                    pass
-                return {"status": "no_slot", "message": "No slot planned for today. Run plan first."}
-        if slot.get("status") in ("posted", "skipped"):
-            return {"status": "already_posted", "date": slot["date"]}
-        if slot.get("post_urn"):
-            slot["status"] = "posted"
-            try:
-                update_slot(slot)
-            except Exception as e:
-                print(f"[agent] WARNING: failed to persist slot: {e}")
-            return {"status": "already_posted", "date": slot["date"]}
+    def tool_pick_daily_topic() -> dict:
+        """Research trending topics and pick the best one for today."""
+        # Dedup: skip if already posted today (checked via analytics DB)
+        try:
+            today_topics = get_topic_history(days=1)
+            if today_topics:
+                return {"status": "already_posted", "date": state["date"]}
+        except Exception as e:
+            _log("WARNING", f"Dedup check failed: {e}")
 
-        state["slot"] = slot
-        state["strategy"] = get_strategy()
-        state["topic"] = slot.get("topic") or {}
-        state["day"] = slot["day"]
+        # Recent topics for repetition avoidance (last 30 days)
+        recent_titles: list[str] = []
+        try:
+            recent_titles = get_topic_history(days=30)
+        except Exception as e:
+            _log("WARNING", f"Could not fetch recent topics: {e}")
 
+        _log("INFO", "Fetching trending topics from all sources...")
+        try:
+            from analytics_tracker import get_top_post_urls
+            top_urls = get_top_post_urls(n=3)
+        except Exception:
+            top_urls = []
+
+        topics = fetch_trending_topics(top_post_urls=top_urls or None)
+        if not topics:
+            return {"status": "no_topics", "message": "No topics found from research sources"}
+
+        _log("INFO", f"Found {len(topics)} topics — LLM picking best one for today...")
+
+        try:
+            topic = pick_daily_topic(topics[:30], recent_titles=recent_titles)
+        except Exception as e:
+            _log("WARNING", f"LLM topic pick failed ({e}) — falling back to top-scored topic")
+            t = topics[0]
+            topic = {
+                "title": t["title"],
+                "source_url": t.get("url", ""),
+                "angle": t.get("description", t["title"]),
+                "why": "Top-scored topic by SMB relevance",
+                "format": "text",
+            }
+
+        state["topic"] = topic
         return {
             "status": "ok",
-            "day": slot["day"],
-            "date": slot["date"],
-            "topic_title": state["topic"].get("title", ""),
-            "angle": state["topic"].get("angle", ""),
-            "format": slot.get("format") or "text",
-            "focus_keywords": state["strategy"].get("focus_keywords", []),
-            "domain": state["strategy"].get("domain", "AI"),
+            "day": state["day"],
+            "date": state["date"],
+            "topic_title": topic.get("title", ""),
+            "angle": topic.get("angle", ""),
+            "format": topic.get("format", "text"),
         }
 
     def tool_get_analytics_summary() -> dict:
@@ -103,10 +101,14 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         except Exception as e:
             return {"error": str(e), "message": "Analytics unavailable — continue without it"}
 
-    def tool_research_topic(topic_title: str, keywords: list | None = None) -> dict:
+    def tool_research_topic() -> dict:
+        topic = state["topic"] or {}
+        topic_title = topic.get("title", "")
+        # Derive keywords from angle + title for deep research
+        angle = topic.get("angle", "")
+        keywords = [w for w in angle.split() if len(w) > 5][:4] if angle else []
         try:
-            kws = keywords or state["strategy"].get("focus_keywords", [])
-            results = fetch_deep_topic_research(topic_title, kws)
+            results = fetch_deep_topic_research(topic_title, keywords)
             state["research"] = results or []
             if results:
                 state["topic"]["research_context"] = "\n".join(
@@ -202,27 +204,14 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         }
 
     def tool_publish_post(post_text: str, chosen_model: str = "deepseek-pro") -> dict:
-        if not state.get("slot"):
-            return {"status": "error", "error": "No slot in state — cannot publish"}
-        slot = state["slot"]
-        topic = state["topic"]
+        topic = state["topic"] or {}
         day = state["day"]
         if preview:
             print("[preview] Publish skipped — preview mode active.")
-            slot["post_text"] = post_text
-            slot["chosen_model"] = chosen_model
             state["done"] = True
             return {"status": "preview", "message": "Post generated and scored — not published."}
         try:
             result = post_to_linkedin(post_text)
-            slot["status"] = "posted"
-            slot["post_urn"] = result["urn"]
-            slot["post_text"] = post_text
-            slot["chosen_model"] = chosen_model
-            try:
-                update_slot(slot)
-            except Exception as e:
-                print(f"[agent] WARNING: failed to persist slot: {e}")
 
             try:
                 log_post({
@@ -247,47 +236,50 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
             send_posted_confirmation(result["url"], 1, post_text)
             state["done"] = True
-            print(f"[agent] Live: {result['url']}")
+            _log("INFO", f"Live: {result['url']}")
             return {"status": "published", "url": result["url"], "urn": result["urn"]}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
     def tool_skip_today(reason: str = "") -> dict:
-        slot = state["slot"]
-        if slot:
-            slot["status"] = "skipped"
-            try:
-                update_slot(slot)
-            except Exception as e:
-                print(f"[agent] WARNING: failed to persist slot: {e}")
-            try:
-                notify_timeout(state["day"], slot.get("date", ""))
-            except Exception as e:
-                print(f"[agent] notify_timeout failed: {e}")
+        try:
+            notify_timeout(state["day"], state["date"])
+        except Exception as e:
+            print(f"[agent] notify_timeout failed: {e}")
         state["done"] = True
-        print(f"[agent] Skipped: {reason}")
+        _log("INFO", f"Skipped: {reason}")
         return {"status": "skipped", "reason": reason}
 
     # ── Direct pipeline ────────────────────────────────────────────────────────
 
-    _log("INFO", "Starting posting pipeline...")
+    _log("INFO", "Starting daily posting pipeline...")
 
-    # 1. Slot
-    slot_result = tool_get_today_slot()
-    _log("INFO", f"Slot status: {slot_result['status']}")
-    if slot_result["status"] in ("no_slot", "already_posted"):
+    # 1. Research trending topics + pick best one for today
+    topic_result = tool_pick_daily_topic()
+    _log("INFO", f"Topic status: {topic_result['status']}")
+    if topic_result["status"] == "already_posted":
+        _log("INFO", "Already posted today — skipping.")
+        return
+    if topic_result["status"] == "no_topics":
+        _log("ERROR", topic_result.get("message", "No topics found"))
+        try:
+            from discord_bot import notify_workflow_failure
+            notify_workflow_failure("⚠️ No trending topics found — research sources may be down.")
+        except Exception:
+            pass
         return
 
-    # 2. Analytics (for hint context in generation)
+    _log("INFO", f"Topic: {topic_result['topic_title']}")
+    _log("INFO", f"Angle: {topic_result['angle']}")
+
+    # 2. Analytics (for context in generation)
     tool_get_analytics_summary()
 
-    # 3. Research
-    topic_title = state["topic"].get("title", "")
-    keywords = state["strategy"].get("focus_keywords", [])
-    research_result = tool_research_topic(topic_title, keywords)
+    # 3. Deep research on the chosen topic
+    research_result = tool_research_topic()
     _log("INFO", f"Research: {research_result.get('sources_found', 0)} sources")
 
-    # 4–5. Generate + score (up to 3 attempts, stop early if score >= 80)
+    # 4–5. Generate + score (up to 3 attempts, stop early if score meets threshold)
     post_text = ""
     score = 0
     hint = ""
@@ -331,12 +323,11 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             scored = tool_score_post(post_text)
             score = scored["score"]
             _log("INFO", f"Regenerated — score {score}/100")
-            # loop back to send_for_approval with new post
 
         elif action == "timeout":
-            _log("INFO", "Approval timeout — auto-publishing variant 1.")
+            _log("INFO", "Approval timeout — auto-publishing.")
             try:
-                notify_auto_post(state["day"], (state["slot"] or {}).get("date", ""))
+                notify_auto_post(state["day"], state["date"])
             except Exception:
                 pass
             tool_publish_post(post_text)

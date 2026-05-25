@@ -56,13 +56,6 @@ jobs:
           path: cache/
         continue-on-error: true
 
-      - name: Download existing schedule
-        uses: actions/download-artifact@v4
-        with:
-          name: weekly-schedule
-          path: .
-        continue-on-error: true
-
       - name: Skip if already posted today
         id: dedup
         env:
@@ -132,14 +125,6 @@ jobs:
           path: cache/linkedin_rules.json
           retention-days: 7
         continue-on-error: true
-
-      - name: Upload schedule
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: weekly-schedule
-          path: weekly_schedule.json
-          retention-days: 90
 
       - name: Notify Discord on failure
         if: failure()

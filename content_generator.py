@@ -318,6 +318,51 @@ Return ONLY valid JSON, nothing else:
     return _rule_based_score(variant, past_performance)
 
 
+def pick_daily_topic(topics: list[dict], recent_titles: list[str] | None = None) -> dict:
+    """Pick today's best topic from trending sources using LLM, avoiding recent repeats."""
+    topics_text = "\n".join(
+        f"{i+1}. [{t['source']}] {t['title']} — {t.get('description', '')[:150]} ({t.get('url', '')})"
+        for i, t in enumerate(topics[:25])
+    )
+
+    avoid_block = ""
+    if recent_titles:
+        avoid_block = "\nRECENTLY COVERED — avoid these themes:\n" + "\n".join(
+            f"- {t}" for t in recent_titles[:15]
+        )
+
+    today = _date.today()
+    day_name = today.strftime("%A")
+
+    prompt = f"""You are The Tech Tutors' LinkedIn content strategist. Pick today's single best topic.
+
+TODAY: {today.isoformat()} ({day_name})
+AUDIENCE: SMB owners (1–50 employees), 30–55, pressed for time, skeptical of hype.
+GOAL: Pick ONE topic that will resonate most with SMB owners today — specific, timely, actionable.
+{avoid_block}
+
+TRENDING TOPICS (sorted by SMB relevance score):
+{topics_text}
+
+CRITERIA:
+✓ Directly useful to a business owner under 50 employees
+✓ Has a specific angle with a monetary or time-saving insight
+✓ Timely — feels like news worth reading today
+✓ NOT covered in the recently-covered list
+
+Return ONLY valid JSON:
+{{
+  "title": "exact title from the list above",
+  "source_url": "the url from that entry",
+  "angle": "one compelling sentence: the specific insight this post will argue",
+  "why": "one sentence: why SMB owners will care about this today",
+  "format": "text"
+}}"""
+
+    raw = _generate(prompt, max_tokens=350, temperature=0.3)
+    return json.loads(_extract_json(raw, "{"))
+
+
 def choose_weekly_strategy(
     performance_data: dict | None = None,
     recent_titles: list[str] | None = None,

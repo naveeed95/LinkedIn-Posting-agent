@@ -1,8 +1,8 @@
 name: Weekly Content Plan
 
 on:
-  schedule:
-    - cron: '0 13 * * 0'  # Sunday 6pm PKT (UTC+5)
+  # Schedule disabled — agent now researches fresh topics daily (no weekly plan needed).
+  # Keep workflow_dispatch for manual use when you want to pre-plan a week.
   workflow_dispatch:
 
 concurrency:

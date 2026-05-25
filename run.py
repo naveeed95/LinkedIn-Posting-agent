@@ -2,10 +2,12 @@
 The Tech Tutors — LinkedIn Posting Agent
 
 Commands:
-  python run.py plan      — research trending topics and plan this week's 5 posts
+  python run.py auto      — research fresh topic, generate, Discord approval, publish (used by Actions)
+  python run.py auto --preview — generate and score without publishing or Discord
   python run.py week      — show this week's schedule and statuses
   python run.py stats     — show engagement stats for this week's posted content
-  python run.py           — generate today's post, pick a variant, approve, publish
+  python run.py plan      — (optional) manually pre-plan this week's 7 slots
+  python run.py           — interactive: generate today's post, choose variant, publish
   python run.py --preview — generate today's post but do not publish
 """
 
@@ -339,7 +341,7 @@ def cmd_post(preview: bool = False, force: bool = False):
 
 
 def cmd_auto(target_date: str | None = None, preview: bool = False):
-    """Fully automated run for GitHub Actions. Delegates to agentic loop in agent_runner.py."""
+    """Fully automated run for GitHub Actions — researches fresh topic daily, no plan needed."""
     if not preview:
         _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
     else:
