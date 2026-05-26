@@ -13,18 +13,17 @@ Commands:
 
 import os
 import sys
-from datetime import date, datetime
+from datetime import datetime
 
 from content_generator import (
     choose_weekly_strategy,
-    engagement_scorer,
     generate_carousel_content,
     generate_text_post_variants,
     plan_weekly_posts,
 )
 from designer import generate_carousel_slides
-from research import fetch_article_content, fetch_deep_topic_research, fetch_trending_topics
-from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_document, post_to_linkedin_with_image
+from research import fetch_article_content, fetch_trending_topics
+from linkedin_poster import get_post_stats, post_to_linkedin, post_to_linkedin_with_document
 from scheduler import (
     build_week_slots,
     get_recent_topics,
@@ -82,7 +81,7 @@ def cmd_plan():
         )
         save_strategy(strategy)
         print(f"\n{'='*60}")
-        print(f"WEEKLY STRATEGY")
+        print("WEEKLY STRATEGY")
         print(f"  Domain:       {strategy['domain']}")
         print(f"  Pillar:       {strategy.get('content_pillar', '—')}")
         print(f"  Keywords:     {', '.join(strategy.get('focus_keywords', []))}")
@@ -193,7 +192,7 @@ def cmd_stats():
 
 
 def cmd_post(preview: bool = False, force: bool = False):
-    _validate_env("GROQ_API_KEY")
+    _validate_env("DEEPSEEK_API_KEY")
     _timing_note()
     slot = get_today_slot()
 
@@ -343,9 +342,9 @@ def cmd_post(preview: bool = False, force: bool = False):
 def cmd_auto(target_date: str | None = None, preview: bool = False):
     """Fully automated run for GitHub Actions — researches fresh topic daily, no plan needed."""
     if not preview:
-        _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
+        _validate_env("DEEPSEEK_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
     else:
-        _validate_env("GROQ_API_KEY")
+        _validate_env("DEEPSEEK_API_KEY")
         print("[auto] Preview mode — will generate and score but NOT publish to LinkedIn.\n")
     from agent_runner import run_agent
     run_agent(target_date=target_date, preview=preview)

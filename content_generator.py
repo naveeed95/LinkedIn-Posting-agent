@@ -6,7 +6,6 @@ from datetime import date as _date
 from dotenv import load_dotenv
 
 from llm_client import (
-    MODELS,
     QUALITY_FIX_MODEL,
     STRATEGY_MODEL,
     UTILITY_MODEL,
@@ -426,7 +425,6 @@ Return ONLY valid JSON:
 
 def plan_weekly_posts(
     topics: list[dict],
-    num_posts: int = 7,
     recent_titles: list[str] | None = None,
     performance_data: dict | None = None,
     strategy: dict | None = None,
@@ -754,87 +752,3 @@ Return ONLY valid JSON, no markdown fences:
         raise RuntimeError("All carousel models failed to produce valid JSON")
 
     return results
-
-
-def generate_research_report(
-    topic: dict,
-    hint: str = "",
-    top_hashtags: list[str] | None = None,
-) -> dict:
-    rules_prompt   = _get_rules_prompt()
-    hint_block     = f"\nUser instruction: {hint}\n" if hint else ""
-    hashtag_block  = f"\nTop-performing hashtags (use 2-3 in caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
-    research_block = f"\nLATEST RESEARCH (use specific facts and stats from these sources):\n{topic['research_context']}\n" if topic.get("research_context") else ""
-
-    prompt = f"""Write a professional AI research brief for The Tech Tutors LinkedIn audience.
-
-TOPIC:  {topic['title']}
-ANGLE:  {topic['angle']}
-SOURCE: {topic['source_url']}
-{hint_block}{hashtag_block}{research_block}
-
-Create a complete structured research report with these exact sections:
-
-1. HEADLINE — one powerful declarative statement, max 12 words, all caps energy
-2. EXECUTIVE_SUMMARY — 2-3 sentences: the situation, why it matters RIGHT NOW, the opportunity for SMBs
-3. KEY_FINDINGS — exactly 5 specific findings with real numbers, percentages, or timeframes (each under 35 words)
-4. BUSINESS_IMPACT — exactly 4 actionable points specifically for small/medium business owners (each under 30 words)
-5. TECH_TUTORS_TAKE — 2-3 sentences of The Tech Tutors' expert perspective and recommendation
-6. KEY_TAKEAWAY — one memorable closing sentence, max 20 words, punchy and memorable
-7. CAPTION — full LinkedIn post caption (1200-1800 chars, follow all writing rules: one idea per line, blank lines between sections, specific question, 3-5 hashtags last line, no links in body)
-
-Return ONLY valid JSON:
-{{
-  "headline": "...",
-  "executive_summary": "...",
-  "key_findings": ["finding 1", "finding 2", "finding 3", "finding 4", "finding 5"],
-  "business_impact": ["impact 1", "impact 2", "impact 3", "impact 4"],
-  "tech_tutors_take": "...",
-  "key_takeaway": "...",
-  "caption": "full LinkedIn caption text here..."
-}}"""
-
-    raw    = _generate(prompt, system_extra=rules_prompt, max_tokens=2500)
-    result = json.loads(_extract_json(raw, "{"))
-    result["caption"] = _fix_post_quality(result["caption"])
-    return result
-
-
-def generate_design_brief(topic: dict, hint: str = "", top_hashtags: list[str] | None = None) -> dict:
-    rules_prompt = _get_rules_prompt()
-    hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
-    hashtag_block = f"\nTop-performing hashtags from our past posts (use 2-3 in the caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
-
-    research_block = ""
-    if topic.get("research_context"):
-        research_block = f"\nLATEST RESEARCH FOUND TODAY (use specific facts/stats from these):\n{topic['research_context']}\n"
-
-    prompt = f"""Create a design brief + LinkedIn caption for The Tech Tutors:
-
-Title: {topic['title']}
-Angle: {topic['angle']}
-Source: {topic['source_url']}
-{hint_block}{hashtag_block}{research_block}
-
-Pick the best visual template:
-- "list": bulleted tips or features
-- "steps": numbered step-by-step process
-- "comparison": two-column before/after or A vs B
-- "stat": large central statistic with supporting points
-
-Return ONLY valid JSON:
-{{
-  "graphic_title": "ALL CAPS bold hook headline — max 8 words, high impact",
-  "hook_subtext": "one amplifying line max 10 words — shown below the headline",
-  "template": "list|steps|comparison|stat",
-  "graphic_layout": "one-line layout description",
-  "graphic_points": ["5-7 specific points — each under 15 words, include numbers and business outcomes, format as 'Headline — specific detail with number'"],
-  "cta_text": "Save this post and follow The Tech Tutors for weekly AI tips that grow your business.",
-  "brand_note": "dark navy background, white text, electric blue accents",
-  "caption": "LinkedIn caption — 1200-1800 chars, no link in body, blank lines between sections, ends with specific question + 3-5 hashtags"
-}}"""
-
-    raw = _generate(prompt, system_extra=rules_prompt, max_tokens=1500)
-    result = json.loads(_extract_json(raw, "{"))
-    result["caption"] = _fix_post_quality(result["caption"])
-    return result

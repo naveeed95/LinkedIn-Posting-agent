@@ -276,9 +276,3 @@ def _dispatch(
         timeout     = 60,
     )
     return response.choices[0].message.content.strip()
-
-
-# ── Convenience: model display lookup ─────────────────────────────────────────
-
-def display_name(model_key: str) -> str:
-    return MODELS.get(model_key, {}).get("display", model_key)

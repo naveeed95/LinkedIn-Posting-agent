@@ -262,9 +262,9 @@ def poll_metrics(post_id: str) -> dict:
     except Exception as e:
         status = getattr(getattr(e, "response", None), "status_code", None)
         if status == 401:
-            print(f"  [analytics] poll_metrics: LinkedIn token expired (401) — run token_refresher.py")
+            print("  [analytics] poll_metrics: LinkedIn token expired (401) — run token_refresher.py")
         elif status == 429:
-            print(f"  [analytics] poll_metrics: rate limited (429) — will retry next poll cycle")
+            print("  [analytics] poll_metrics: rate limited (429) — will retry next poll cycle")
         else:
             print(f"  [analytics] poll_metrics error: {type(e).__name__}: {e}")
         return {}
@@ -357,6 +357,16 @@ def get_performance_summary() -> dict:
         "model_wins":       {r["chosen_model"]: r["wins"] for r in model_rows},
         "model_scores":     {r["chosen_model"]: round(r["score"] or 0, 1) for r in model_rows},
     }
+
+
+def already_posted_on(date_str: str) -> bool:
+    """True if any topic was logged on the given calendar date (YYYY-MM-DD)."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM topics_history WHERE posted_at LIKE ? LIMIT 1",
+            (f"{date_str}%",),
+        ).fetchone()
+    return row is not None
 
 
 def get_topic_history(days: int = 14) -> list[str]:

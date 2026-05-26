@@ -71,6 +71,10 @@ def _author_urn() -> str:
     urn = os.environ.get("LINKEDIN_ORG_URN", "")
     if not urn:
         raise EnvironmentError("LINKEDIN_ORG_URN is required — personal posting is disabled")
+    if not urn.startswith("urn:li:organization:"):
+        raise EnvironmentError(
+            f"LINKEDIN_ORG_URN must be an organization URN (urn:li:organization:...), got: {urn}"
+        )
     return urn
 
 
@@ -86,19 +90,6 @@ def _validate_upload_url(url: str) -> None:
     host = parsed.hostname or ""
     if not any(host == h or host.endswith("." + h) for h in _LINKEDIN_UPLOAD_HOSTS):
         raise ValueError(f"Upload URL host not trusted: {host!r}")
-
-
-_IMAGE_CONTENT_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-}
-
-
-def _image_content_type(path: str) -> str:
-    return _IMAGE_CONTENT_TYPES.get(Path(path).suffix.lower(), "image/octet-stream")
 
 
 def post_to_linkedin(text: str) -> dict:
@@ -119,74 +110,6 @@ def post_to_linkedin(text: str) -> dict:
             "com.linkedin.ugc.ShareContent": {
                 "shareCommentary": {"text": text},
                 "shareMediaCategory": "NONE",
-            }
-        },
-        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
-    }
-    resp = _request_with_retry("POST", UGC_URL, json=payload, headers=_headers(token))
-    resp.raise_for_status()
-    return _parse_result(resp)
-
-
-def _register_image(token: str, person_urn: str) -> tuple[str, str]:
-    payload = {
-        "registerUploadRequest": {
-            "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-            "owner": person_urn,
-            "serviceRelationships": [
-                {"relationshipType": "OWNER", "identifier": "urn:li:userGeneratedContent"}
-            ],
-        }
-    }
-    resp = _request_with_retry("POST", ASSET_URL, json=payload, headers=_headers(token))
-    resp.raise_for_status()
-    data = resp.json()["value"]
-    upload_url = data["uploadMechanism"][
-        "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
-    ]["uploadUrl"]
-    return upload_url, data["asset"]
-
-
-def _upload_image_binary(upload_url: str, token: str, image_path: str):
-    _validate_upload_url(upload_url)
-    if not Path(image_path).exists():
-        raise FileNotFoundError(f"Image not found: {image_path}")
-    with open(image_path, "rb") as f:
-        body = f.read()
-    resp = _request_with_retry(
-        "PUT",
-        upload_url,
-        data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": _image_content_type(image_path)},
-        timeout=60,
-    )
-    resp.raise_for_status()
-
-
-def post_to_linkedin_with_image(text: str, image_path: str) -> dict:
-    token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
-    if not token:
-        raise EnvironmentError("LINKEDIN_ACCESS_TOKEN is required but not set")
-    person_urn = _author_urn()
-
-    upload_url, asset_urn = _register_image(token, person_urn)
-    _upload_image_binary(upload_url, token, image_path)
-
-    payload = {
-        "author": person_urn,
-        "lifecycleState": "PUBLISHED",
-        "specificContent": {
-            "com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {"text": text},
-                "shareMediaCategory": "IMAGE",
-                "media": [
-                    {
-                        "status": "READY",
-                        "description": {"text": ""},
-                        "media": asset_urn,
-                        "title": {"text": ""},
-                    }
-                ],
             }
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
