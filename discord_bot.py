@@ -52,7 +52,7 @@ def _channel(key: str) -> str:
 
 def _send_message(channel_id: str, content: str) -> str | None:
     if not channel_id or not _token():
-        print(f"  [discord] Missing token or channel ID — message not sent.")
+        print("  [discord] Missing token or channel ID — message not sent.")
         return None
     try:
         resp = requests.post(
@@ -74,7 +74,7 @@ def _send_long_message(channel_id: str, content: str) -> str | None:
     """Discord caps each message at 2000 chars. Split long content across messages.
     Returns the ID of the FIRST message (the one we'll watch for replies)."""
     if not channel_id or not _token():
-        print(f"  [discord] Missing token or channel ID — message not sent.")
+        print("  [discord] Missing token or channel ID — message not sent.")
         return None
 
     if len(content) <= 1990:
@@ -275,81 +275,6 @@ def wait_for_approval(
 
     print("  [discord] Approval timeout reached.")
     return {"action": "timeout"}
-
-
-def send_design_approval_message(
-    variants: list[dict],
-    topic: dict,
-    day: str,
-) -> str | None:
-    """Send a carousel approval showing each model's structured slide content."""
-    date_str = datetime.now().strftime("%A %d %B %Y")
-    divider  = "━" * 40
-
-    if not variants:
-        _send_message(
-            _channel("DISCORD_APPROVALS_CHANNEL_ID"),
-            f"⚠️ No carousel variants generated for {day} {date_str}. Logging as missed.",
-        )
-        return None
-
-    sections: list[str] = []
-    for i, v in enumerate(variants, 1):
-        c = v["content"]
-        headline    = c.get("slide1", {}).get("headline", "")
-        subheadline = c.get("slide1", {}).get("subheadline", "")
-        stats       = c.get("slide2", {}).get("stats", [])
-        impacts     = c.get("slide3", {}).get("impacts", [])
-        steps       = c.get("slide4", {}).get("steps", [])
-        takeaway    = c.get("slide5", {}).get("takeaway", "")
-        caption     = c.get("caption", "")
-        cap_preview = caption[:300] + ("..." if len(caption) > 300 else "")
-
-        stats_text   = " | ".join(f"{s.get('stat', '')}" for s in stats[:3])
-        impacts_text = " | ".join(imp.get('title', '') for imp in impacts[:3])
-        steps_text   = " | ".join(s.get('action', '') for s in steps[:3])
-
-        sections.append(
-            f"{divider}\n"
-            f"**[{i}] {v['display_name']}**\n"
-            f"**HOOK:** {headline}\n"
-            f"_{subheadline}_\n\n"
-            f"**STATS:** {stats_text}\n"
-            f"**IMPACTS:** {impacts_text}\n"
-            f"**STEPS:** {steps_text}\n\n"
-            f"**TAKEAWAY:** {takeaway}\n\n"
-            f"**CAPTION:** {cap_preview}"
-        )
-
-    single = len(variants) == 1
-    if single:
-        instructions = (
-            "**Reply with:**\n"
-            "✅ `yes` — approve and post this carousel\n"
-            "🔄 `r [hint]` — regenerate (e.g. `r add more stats`)\n"
-            "❌ `skip` — skip today (logged as missed)"
-        )
-    else:
-        instructions = "**Reply with:**\n"
-        for i, v in enumerate(variants, 1):
-            instructions += f"✅ `{i}` — post {v['display_name']}'s carousel\n"
-        instructions += (
-            "🔄 `r [hint]` — regenerate all (e.g. `r add more stats`)\n"
-            "❌ `skip` — skip today (logged as missed)"
-        )
-
-    header = (
-        f"📄 **THE TECH TUTORS — Carousel Post** | {day} {date_str}\n"
-        f"**Topic:** {topic.get('title', '')}\n"
-    )
-
-    content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}\n\n" + instructions
-
-    channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
-    msg_id = _send_long_message(channel_id, content)
-    if msg_id:
-        print(f"  [discord] Carousel approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
-    return msg_id
 
 
 def send_posted_confirmation(post_url: str, variant_used: int, post_text: str) -> None:

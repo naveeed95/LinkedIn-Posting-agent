@@ -18,7 +18,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     from content_generator import engagement_scorer, generate_text_post_variants, pick_daily_topic
     from research import fetch_trending_topics, fetch_deep_topic_research
     from linkedin_poster import post_first_comment, post_to_linkedin
-    from analytics_tracker import get_performance_summary, get_top_hashtags, get_topic_history, log_post
+    from analytics_tracker import already_posted_on, get_performance_summary, get_top_hashtags, get_topic_history, log_post
     from discord_bot import (
         notify_auto_post,
         notify_timeout,
@@ -42,10 +42,9 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
     def tool_pick_daily_topic() -> dict:
         """Research trending topics and pick the best one for today."""
-        # Dedup: skip if already posted today (checked via analytics DB)
+        # Dedup: skip if already posted today (calendar date, not rolling 24h)
         try:
-            today_topics = get_topic_history(days=1)
-            if today_topics:
+            if already_posted_on(state["date"]):
                 return {"status": "already_posted", "date": state["date"]}
         except Exception as e:
             _log("WARNING", f"Dedup check failed: {e}")

@@ -157,15 +157,15 @@ def main():
     if org_urn:
         set_key(ENV_FILE, "LINKEDIN_ORG_URN", org_urn)
 
-    print(f"\nSuccess! Saved to .env:")
+    print("\nSuccess! Saved to .env:")
     print(f"  LINKEDIN_PERSON_URN   = {person_urn}")
     if org_urn:
         print(f"  LINKEDIN_ORG_URN      = {org_urn}")
     else:
         print("  LINKEDIN_ORG_URN      = not found — add manually to .env")
-    print(f"  LINKEDIN_ACCESS_TOKEN = [hidden]")
+    print("  LINKEDIN_ACCESS_TOKEN = [hidden]")
     if refresh_token:
-        print(f"  LINKEDIN_REFRESH_TOKEN = [hidden] — used for auto-refresh")
+        print("  LINKEDIN_REFRESH_TOKEN = [hidden] — used for auto-refresh")
     else:
         print("  LINKEDIN_REFRESH_TOKEN = not returned by LinkedIn (token refresh unavailable)")
     print("\nYou can now run: python run.py")
