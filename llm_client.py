@@ -172,6 +172,7 @@ def call_with_fallback(
     prompt: str,
     system: str = "",
     max_tokens: int = 2500,
+    temperature: float | None = None,
 ) -> str:
     """Try each model in order. Return the first one that succeeds.
 
@@ -179,6 +180,9 @@ def call_with_fallback(
     Used for utility / strategy / quality-fix calls where we only need ONE
     answer and don't care which provider produced it.
     """
+    unknown = [k for k in model_keys if k not in MODELS]
+    if unknown:
+        raise ValueError(f"Unknown model keys: {unknown}. Available: {list(MODELS.keys())}")
     available = [k for k in model_keys if _provider_available(MODELS[k]["provider"])]
     if not available:
         raise RuntimeError("No providers available — check API key env vars")
@@ -186,7 +190,7 @@ def call_with_fallback(
     last_error: Exception | None = None
     for model_key in available:
         try:
-            return call_model(model_key, prompt, system, max_tokens)
+            return call_model(model_key, prompt, system, max_tokens, temperature)
         except Exception as e:
             print(f"  [llm] {model_key} failed: {str(e)[:120]} — trying next")
             last_error = e

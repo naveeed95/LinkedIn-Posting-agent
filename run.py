@@ -103,8 +103,8 @@ def cmd_plan():
         msg = "Weekly plan failed: no topics fetched. Check internet / API keys."
         print(f"[plan] ERROR: {msg}")
         try:
-            from discord_bot import send_error_alert
-            send_error_alert(msg)
+            from discord_bot import notify_workflow_failure
+            notify_workflow_failure(msg)
         except Exception:
             pass
         return
@@ -193,7 +193,7 @@ def cmd_stats():
 
 
 def cmd_post(preview: bool = False, force: bool = False):
-    _validate_env("GROQ_API_KEY")
+    _validate_env("DEEPSEEK_API_KEY")
     _timing_note()
     slot = get_today_slot()
 
@@ -343,9 +343,9 @@ def cmd_post(preview: bool = False, force: bool = False):
 def cmd_auto(target_date: str | None = None, preview: bool = False):
     """Fully automated run for GitHub Actions — researches fresh topic daily, no plan needed."""
     if not preview:
-        _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
+        _validate_env("DEEPSEEK_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
     else:
-        _validate_env("GROQ_API_KEY")
+        _validate_env("DEEPSEEK_API_KEY")
         print("[auto] Preview mode — will generate and score but NOT publish to LinkedIn.\n")
     from agent_runner import run_agent
     run_agent(target_date=target_date, preview=preview)

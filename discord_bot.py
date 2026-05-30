@@ -88,9 +88,9 @@ def _send_long_message(channel_id: str, content: str) -> str | None:
             break
         # Prefer to break at a divider line if possible
         cut = remaining.rfind("━━━", 0, 1990)
-        if cut <= 100:
+        if cut < 1:
             cut = remaining.rfind("\n", 0, 1990)
-        if cut <= 100:
+        if cut < 1:
             cut = 1990
         chunks.append(remaining[:cut])
         remaining = remaining[cut:].lstrip("\n")

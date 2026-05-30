@@ -102,7 +102,7 @@ def get_slot_for_date(date_str: str) -> dict | None:
     """Find a slot by exact date (YYYY-MM-DD) across all weeks."""
     schedule = load_schedule()
     for week_key, slots in schedule.items():
-        if "_strategy" in week_key or not isinstance(slots, list):
+        if week_key.endswith("_strategy") or not isinstance(slots, list):
             continue
         for slot in slots:
             if slot.get("date") == date_str:

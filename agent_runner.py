@@ -36,6 +36,8 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         "previous_posts": [],
         "generate_count": 0,
         "done": False,
+        "chosen_model": "deepseek-pro",
+        "chosen_display": "DeepSeek Chat",
     }
 
     # ── Tool implementations ───────────────────────────────────────────────────
@@ -147,6 +149,8 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
             v = variants[0]
             state["previous_posts"].append(v["text"])
+            state["chosen_model"] = v["model_key"]
+            state["chosen_display"] = v["display_name"]
             return {
                 "post_text": v["text"],
                 "model_key": v["model_key"],
@@ -188,7 +192,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
         topic = state["topic"]
         day = state["day"]
-        variants = [{"model_key": "deepseek-pro", "display_name": "DeepSeek Chat", "text": post_text}]
+        variants = [{"model_key": state["chosen_model"], "display_name": state["chosen_display"], "text": post_text}]
         msg_id = send_approval_message(variants, [score], topic, day)
 
         if not msg_id:
@@ -305,7 +309,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         action = decision.get("action", "skip")
 
         if action == "post":
-            tool_publish_post(post_text)
+            tool_publish_post(post_text, chosen_model=state["chosen_model"])
             return
 
         elif action == "edit":
@@ -330,7 +334,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                 notify_auto_post(state["day"], state["date"])
             except Exception:
                 pass
-            tool_publish_post(post_text)
+            tool_publish_post(post_text, chosen_model=state["chosen_model"])
             return
 
         else:

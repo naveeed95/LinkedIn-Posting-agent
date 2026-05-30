@@ -153,7 +153,7 @@ _rules_cache: tuple[str, float] | None = None
 _RULES_CACHE_TTL = 3600  # 1 hour
 
 
-def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> str:
+def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048, temperature: float | None = None) -> str:
     """Single-shot generation for strategy and utility calls.
 
     Routes through the multi-provider router so we use the best available free
@@ -167,10 +167,11 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
     if system_extra:
         system += "\n\n" + system_extra
     return call_with_fallback(
-        model_keys = [STRATEGY_MODEL],
-        prompt     = prompt,
-        system     = system,
-        max_tokens = max_tokens,
+        model_keys  = [STRATEGY_MODEL],
+        prompt      = prompt,
+        system      = system,
+        max_tokens  = max_tokens,
+        temperature = temperature,
     )
 
 
