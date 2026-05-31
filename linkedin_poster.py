@@ -8,6 +8,11 @@ from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 
+from logger import get_logger
+
+log = get_logger("linkedin")
+
+
 load_dotenv()
 
 UGC_URL   = "https://api.linkedin.com/v2/ugcPosts"
@@ -43,7 +48,7 @@ def _request_with_retry(
             resp = requests.request(method, url, timeout=timeout, **kwargs)
             if resp.status_code in _RETRY_STATUSES and attempt < max_retries - 1:
                 delay = min(2 ** attempt + random.uniform(0, 1), 30)
-                print(f"  [linkedin] {method} {url} -> {resp.status_code}, retry in {delay:.1f}s")
+                log.info(f"{method} {url} -> {resp.status_code}, retry in {delay:.1f}s")
                 time.sleep(delay)
                 continue
             return resp
@@ -52,7 +57,7 @@ def _request_with_retry(
             if attempt == max_retries - 1:
                 raise
             delay = min(2 ** attempt + random.uniform(0, 1), 30)
-            print(f"  [linkedin] {method} {url} transient error: {str(e)[:120]} — retry in {delay:.1f}s")
+            log.warning(f"{method} {url} transient error: {str(e)[:120]} — retry in {delay:.1f}s")
             time.sleep(delay)
     if last_exc:
         raise last_exc
@@ -295,5 +300,5 @@ def get_post_stats(post_urn: str) -> dict:
             "comments": data.get("commentsSummary", {}).get("totalFirstLevelComments", 0),
         }
     except Exception as e:
-        print(f"  [linkedin] get_post_stats({post_urn[:40]}): {type(e).__name__}: {e}")
+        log.info(f"get_post_stats({post_urn[:40]}): {type(e).__name__}: {e}")
         return {}

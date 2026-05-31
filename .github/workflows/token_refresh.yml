@@ -35,6 +35,7 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+          LOG_FORMAT: json
         run: python token_refresher.py
 
       - name: Notify Discord on failure
@@ -42,6 +43,7 @@ jobs:
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+          LOG_FORMAT: json
         run: |
           pip install requests python-dotenv -q
           python notify_failure.py \

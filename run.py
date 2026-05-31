@@ -25,6 +25,7 @@ from content_generator import (
 from designer import generate_carousel_slides
 from research import fetch_article_content, fetch_deep_topic_research, fetch_trending_topics
 from linkedin_poster import get_post_stats, post_first_comment, post_to_linkedin, post_to_linkedin_with_document, post_to_linkedin_with_image
+from logger import get_logger
 from scheduler import (
     build_week_slots,
     get_recent_topics,
@@ -36,12 +37,16 @@ from scheduler import (
     update_slot,
 )
 
+log_auto = get_logger("auto")
+log_plan = get_logger("plan")
+log_startup = get_logger("startup")
+
 
 def _validate_env(*required: str) -> None:
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
-        print(f"[startup] ERROR: Required env vars not set: {', '.join(missing)}")
-        print("[startup] Set these as GitHub Secrets or in your .env file.")
+        log_startup.warning(f"ERROR: Required env vars not set: {', '.join(missing)}")
+        log_startup.info("Set these as GitHub Secrets or in your .env file.")
         sys.exit(1)
 
 
@@ -60,7 +65,7 @@ def cmd_plan():
         from analytics_tracker import get_performance_summary
         performance_data = get_performance_summary()
     except Exception as e:
-        print(f"  [plan] Analytics unavailable: {e}")
+        log_plan.info(f"Analytics unavailable: {e}")
 
     if recent:
         print(f"Avoiding {len(recent)} recently covered themes.\n")
@@ -101,7 +106,7 @@ def cmd_plan():
     )
     if not topics:
         msg = "Weekly plan failed: no topics fetched. Check internet / API keys."
-        print(f"[plan] ERROR: {msg}")
+        log_plan.warning(f"ERROR: {msg}")
         try:
             from discord_bot import send_error_alert
             send_error_alert(msg)
@@ -157,7 +162,7 @@ def cmd_plan():
         from discord_bot import send_weekly_plan
         send_weekly_plan(slots, strategy=strategy or None, scores=score_map)
     except Exception as e:
-        print(f"  [plan] Discord notification failed: {e}")
+        log_plan.warning(f"Discord notification failed: {e}")
 
 
 def cmd_week():
@@ -346,7 +351,7 @@ def cmd_auto(target_date: str | None = None, preview: bool = False):
         _validate_env("GROQ_API_KEY", "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_ORG_URN")
     else:
         _validate_env("GROQ_API_KEY")
-        print("[auto] Preview mode — will generate and score but NOT publish to LinkedIn.\n")
+        log_auto.info("Preview mode — will generate and score but NOT publish to LinkedIn.\n")
     from agent_runner import run_agent
     run_agent(target_date=target_date, preview=preview)
 

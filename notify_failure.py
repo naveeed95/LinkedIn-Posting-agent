@@ -10,7 +10,11 @@ import os
 
 from dotenv import load_dotenv
 
+from logger import get_logger
+
 load_dotenv()
+
+log = get_logger("notify")
 
 
 def main() -> None:
@@ -23,8 +27,9 @@ def main() -> None:
     message = f"❌ **{args.workflow_name} FAILED**{link}"
 
     from discord_bot import notify_workflow_failure
+
     notify_workflow_failure(message)
-    print(f"[notify] Failure notification sent: {args.workflow_name}")
+    log.info(f"Failure notification sent: {args.workflow_name}")
 
 
 if __name__ == "__main__":

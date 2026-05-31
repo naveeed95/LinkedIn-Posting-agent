@@ -16,7 +16,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from logger import get_logger
+
 load_dotenv()
+
+log = get_logger("rules")
 
 CACHE_FILE = Path(__file__).parent / "cache" / "linkedin_rules.json"
 CACHE_TTL_HOURS = 24
@@ -33,11 +37,12 @@ _QUERIES = [
 def _fetch_query(query: str) -> list[dict]:
     try:
         from tavily import TavilyClient
+
         client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY", ""))
         results = client.search(query, max_results=3, search_depth="advanced")
         return results.get("results", [])
     except Exception as e:
-        print(f"  [rules] Tavily query failed ({query[:50]}): {e}")
+        log.warning(f"Tavily query failed ({query[:50]}): {e}")
         return []
 
 
@@ -51,7 +56,7 @@ def _load_cache() -> dict | None:
         if datetime.now() - fetched_at < timedelta(hours=CACHE_TTL_HOURS):
             return data
     except Exception as e:
-        print(f"  [rules] Cache load failed ({type(e).__name__}: {e}) — will re-fetch")
+        log.warning(f"Cache load failed ({type(e).__name__}: {e}) — will re-fetch")
     return None
 
 
@@ -84,14 +89,14 @@ def _save_cache(rules_text: str, sources: list[dict]) -> None:
 def fetch_rules() -> dict:
     cached = _load_cache()
     if cached:
-        print("  [rules] Using cached LinkedIn rules (< 24h old).")
+        log.info("Using cached LinkedIn rules (< 24h old).")
         return cached
 
     if not os.environ.get("TAVILY_API_KEY"):
-        print("  [rules] TAVILY_API_KEY not set — skipping rules fetch.")
+        log.info("TAVILY_API_KEY not set — skipping rules fetch.")
         return {}
 
-    print("  [rules] Fetching latest LinkedIn algorithm rules via Tavily...")
+    log.info("Fetching latest LinkedIn algorithm rules via Tavily...")
     all_results: list[dict] = []
 
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -121,7 +126,7 @@ def fetch_rules() -> dict:
     )
 
     _save_cache(rules_text, sources)
-    print(f"  [rules] Fetched {len(unique)} LinkedIn algorithm sources. Cached 24h.")
+    log.info(f"Fetched {len(unique)} LinkedIn algorithm sources. Cached 24h.")
 
     return {
         "fetched_at": datetime.now().isoformat(),

@@ -27,6 +27,11 @@ from datetime import datetime
 import requests
 from dotenv import load_dotenv
 
+from logger import get_logger
+
+log = get_logger("discord")
+
+
 load_dotenv()
 
 DISCORD_API = "https://discord.com/api/v10"
@@ -52,7 +57,7 @@ def _channel(key: str) -> str:
 
 def _send_message(channel_id: str, content: str) -> str | None:
     if not channel_id or not _token():
-        print(f"  [discord] Missing token or channel ID — message not sent.")
+        log.info(f"Missing token or channel ID — message not sent.")
         return None
     try:
         resp = requests.post(
@@ -63,10 +68,10 @@ def _send_message(channel_id: str, content: str) -> str | None:
         )
         if resp.ok:
             return resp.json().get("id")
-        print(f"  [discord] Send failed ({resp.status_code}): {resp.text[:200]}")
+        log.warning(f"Send failed ({resp.status_code}): {resp.text[:200]}")
         return None
     except Exception as e:
-        print(f"  [discord] Send error: {e}")
+        log.warning(f"Send error: {e}")
         return None
 
 
@@ -74,7 +79,7 @@ def _send_long_message(channel_id: str, content: str) -> str | None:
     """Discord caps each message at 2000 chars. Split long content across messages.
     Returns the ID of the FIRST message (the one we'll watch for replies)."""
     if not channel_id or not _token():
-        print(f"  [discord] Missing token or channel ID — message not sent.")
+        log.info(f"Missing token or channel ID — message not sent.")
         return None
 
     if len(content) <= 1990:
@@ -102,7 +107,7 @@ def _send_long_message(channel_id: str, content: str) -> str | None:
         if i == 0:
             first_id = msg_id
             if first_id is None:
-                print("  [discord] First chunk failed to send — aborting long message")
+                log.warning("First chunk failed to send — aborting long message")
                 return None
         time.sleep(0.5)
     return first_id
@@ -118,19 +123,19 @@ def _get_messages_after(channel_id: str, after_id: str) -> "list[dict] | object"
             timeout=15,
         )
         if not resp.ok:
-            print(f"  [discord] Fetch messages failed ({resp.status_code}): {resp.text[:200]}")
+            log.warning(f"Fetch messages failed ({resp.status_code}): {resp.text[:200]}")
             return _FETCH_ERROR
         try:
             data = resp.json()
             if isinstance(data, list):
                 return data
-            print(f"  [discord] Unexpected response shape: {str(data)[:200]}")
+            log.info(f"Unexpected response shape: {str(data)[:200]}")
             return _FETCH_ERROR
         except Exception as e:
-            print(f"  [discord] Response decode error: {e}")
+            log.warning(f"Response decode error: {e}")
             return _FETCH_ERROR
     except Exception as e:
-        print(f"  [discord] Fetch messages error: {e}")
+        log.warning(f"Fetch messages error: {e}")
         return _FETCH_ERROR
 
 
@@ -198,7 +203,7 @@ def send_approval_message(
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
     msg_id = _send_long_message(channel_id, content)
     if msg_id:
-        print(f"  [discord] Approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
+        log.info(f"Approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
     return msg_id
 
 
@@ -221,7 +226,7 @@ def wait_for_approval(
 
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
     if not channel_id or not message_id:
-        print("  [discord] No channel/message ID — defaulting to timeout.")
+        log.warning("No channel/message ID — defaulting to timeout.")
         return {"action": "timeout"}
 
     valid_picks = {str(i) for i in range(1, num_variants + 1)}
@@ -271,9 +276,9 @@ def wait_for_approval(
         # Print status every minute (every 4 checks at 15s interval)
         if checks % 4 == 0:
             mins_left = int((deadline - time.time()) / 60)
-            print(f"  [discord] Waiting for approval... ({mins_left}min left)")
+            log.info(f"Waiting for approval... ({mins_left}min left)")
 
-    print("  [discord] Approval timeout reached.")
+    log.warning("Approval timeout reached.")
     return {"action": "timeout"}
 
 
@@ -348,7 +353,7 @@ def send_design_approval_message(
     channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
     msg_id = _send_long_message(channel_id, content)
     if msg_id:
-        print(f"  [discord] Carousel approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
+        log.info(f"Carousel approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
     return msg_id
 
 
@@ -496,7 +501,7 @@ def send_weekly_plan(
     """Send the full week's content plan to the planning channel."""
     channel_id = _channel("DISCORD_PLAN_CHANNEL_ID") or _channel("DISCORD_APPROVALS_CHANNEL_ID")
     if not channel_id:
-        print("  [discord] No plan or approvals channel configured — weekly plan not sent.")
+        log.info("No plan or approvals channel configured — weekly plan not sent.")
         return None
 
     week_start = slots[0]["date"] if slots else datetime.now().strftime("%Y-%m-%d")
@@ -549,7 +554,7 @@ def send_weekly_plan(
 
     msg_id = _send_long_message(channel_id, content)
     if msg_id:
-        print(f"  [discord] Weekly plan sent to plan channel (id: {msg_id}).")
+        log.info(f"Weekly plan sent to plan channel (id: {msg_id}).")
     return msg_id
 
 

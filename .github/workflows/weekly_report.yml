@@ -44,6 +44,7 @@ jobs:
         env:
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
           LINKEDIN_ORG_URN: ${{ secrets.LINKEDIN_ORG_URN }}
+          LOG_FORMAT: json
         run: python analytics_tracker.py --poll
 
       - name: Send weekly report to Discord
@@ -52,6 +53,7 @@ jobs:
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          LOG_FORMAT: json
         run: python discord_bot.py --send-weekly-report
         continue-on-error: true
 

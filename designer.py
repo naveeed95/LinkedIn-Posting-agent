@@ -13,6 +13,11 @@ import platform
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
+from logger import get_logger
+
+log = get_logger("designer")
+
+
 # ── Brand Colors (matched to The Tech Tutors logo) ───────────────────────────
 # Logo palette: near-black background, yellow hero accent, teal secondary
 BG_TOP    = (15,  15,  15)   # near-black charcoal (logo background)
@@ -363,7 +368,7 @@ def generate_slide_deck(brief: dict, date_str: str) -> tuple[str, str]:
     slides[0].save(pdf_path, save_all=True, append_images=slides[1:])
     slides[0].save(preview_path, "PNG")
 
-    print(f"  [designer] {len(slides)} slides -> {pdf_path}")
+    log.info(f"{len(slides)} slides -> {pdf_path}")
     return pdf_path, preview_path
 
 
@@ -653,7 +658,7 @@ def generate_carousel_slides(content: dict, date_str: str) -> tuple[str, str]:
     preview_path = str(OUTPUT_DIR / f"{date_str}_slide1.png")
     slides[0].save(pdf_path, save_all=True, append_images=slides[1:])
     slides[0].save(preview_path, "PNG")
-    print(f"  [designer] 5 slides -> {pdf_path}")
+    log.info(f"5 slides -> {pdf_path}")
     return pdf_path, preview_path
 
 
@@ -778,5 +783,5 @@ def generate_research_pdf(report: dict, date_str: str, source_url: str = "") -> 
     ))
 
     doc.build(story)
-    print(f"  [designer] Research PDF -> {pdf_path}")
+    log.info(f"Research PDF -> {pdf_path}")
     return pdf_path

@@ -31,6 +31,11 @@ import openai as _openai_module
 from openai import OpenAI as _OpenAI
 from dotenv import load_dotenv
 
+from logger import get_logger
+
+log = get_logger("llm")
+
+
 load_dotenv()
 
 # ── Provider clients (lazy) ───────────────────────────────────────────────────
@@ -130,7 +135,7 @@ def _call_with_retry(
                 raise
             last_error = e
             delay = min(2 ** attempt + random.uniform(0, 1), 30)
-            print(f"  [llm] {provider} transient error (attempt {attempt + 1}/{max_retries}), retry in {delay:.1f}s: {str(e)[:80]}")
+            log.warning(f"{provider} transient error (attempt {attempt + 1}/{max_retries}), retry in {delay:.1f}s: {str(e)[:80]}")
             time.sleep(delay)
     raise RuntimeError(f"unreachable — last error: {last_error}")
 
@@ -188,7 +193,7 @@ def call_with_fallback(
         try:
             return call_model(model_key, prompt, system, max_tokens)
         except Exception as e:
-            print(f"  [llm] {model_key} failed: {str(e)[:120]} — trying next")
+            log.warning(f"{model_key} failed: {str(e)[:120]} — trying next")
             last_error = e
     raise RuntimeError(f"All fallback models exhausted. Last error: {last_error}")
 
@@ -222,11 +227,11 @@ def generate_variants(
     def _try_model(model_key: str) -> dict | None:
         cfg = MODELS[model_key]
         try:
-            print(f"  [llm] Generating with {cfg['display']}...")
+            log.info(f"Generating with {cfg['display']}...")
             text = call_model(model_key, prompt, system, max_tokens)
             return {"model_key": model_key, "display_name": cfg["display"], "text": text}
         except Exception as e:
-            print(f"  [llm] {cfg['display']} failed: {str(e)[:120]} — skipping this variant")
+            log.warning(f"{cfg['display']} failed: {str(e)[:120]} — skipping this variant")
             return None
 
     variants: list[dict] = []
@@ -238,7 +243,7 @@ def generate_variants(
                 if result:
                     variants.append(result)
         except FuturesTimeoutError:
-            print("  [llm] Variant generation timed out after 90s — using partial results")
+            log.info("Variant generation timed out after 90s — using partial results")
 
     if not variants:
         raise RuntimeError(f"All models failed for job '{job}'")

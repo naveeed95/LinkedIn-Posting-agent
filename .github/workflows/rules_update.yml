@@ -29,12 +29,14 @@ jobs:
       - name: Fetch and refresh LinkedIn rules
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          LOG_FORMAT: json
         run: python -c "from linkedin_rules_fetcher import fetch_rules; fetch_rules()"
 
       - name: Notify Discord of any updates
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+          LOG_FORMAT: json
         run: python discord_bot.py --rules-update
         continue-on-error: true
 

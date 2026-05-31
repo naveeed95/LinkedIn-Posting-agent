@@ -17,6 +17,11 @@ from dotenv import load_dotenv
 
 from llm_client import UTILITY_MODEL, call_model
 
+from logger import get_logger
+
+log = get_logger("responder")
+
+
 load_dotenv()
 
 REPLY_SYSTEM = """You are a community manager for The Tech Tutors LinkedIn page.
@@ -49,11 +54,11 @@ _DELIMITER_PATTERN = re.compile(r"(#{3,}|-{3,}|={3,}|\*{3,}|<[a-zA-Z/]+>)")
 
 def _sanitize_comment(text: str) -> str:
     if len(text) > 1000:
-        print("  [responder] Comment exceeds 1000 chars — skipping (possible spam/injection)")
+        log.info("Comment exceeds 1000 chars — skipping (possible spam/injection)")
         return ""
     text = text[:500]
     if _INJECTION_PREFIXES.match(text.strip()):
-        print("  [responder] Injection prefix detected — skipping comment")
+        log.info("Injection prefix detected — skipping comment")
         return ""
     text = _INJECTION_PATTERN.sub("", text)
     text = _DELIMITER_PATTERN.sub("", text)
@@ -103,11 +108,11 @@ def fetch_comments(post_urn: str) -> list[dict]:
             timeout=15,
         )
         if not resp.ok:
-            print(f"  [responder] Comments fetch failed ({resp.status_code}): {resp.text[:150]}")
+            log.warning(f"Comments fetch failed ({resp.status_code}): {resp.text[:150]}")
             return []
         return resp.json().get("elements", [])
     except Exception as e:
-        print(f"  [responder] fetch_comments error: {e}")
+        log.warning(f"fetch_comments error: {e}")
         return []
 
 
@@ -146,7 +151,7 @@ def _load_seen_urns() -> set[str]:
         cutoff = (date.today() - timedelta(days=7)).isoformat()
         return {urn for urn, ts in data.items() if ts >= cutoff}
     except Exception as e:
-        print(f"  [responder] Failed to load seen URNs: {e}")
+        log.warning(f"Failed to load seen URNs: {e}")
         return set()
 
 
@@ -164,13 +169,13 @@ def _save_seen_urns(urns: set[str]) -> None:
         with open(_SEEN_URNS_FILE, "w", encoding="utf-8") as f:
             json.dump(existing, f, indent=2)
     except Exception as e:
-        print(f"  [responder] Failed to save seen URNs: {e}")
+        log.warning(f"Failed to save seen URNs: {e}")
 
 
 def fetch_unanswered_comments() -> list[dict]:
     post_urns = fetch_recent_post_urns(days=7)
     if not post_urns:
-        print("  [responder] No recent posts found in weekly_schedule.json.")
+        log.info("No recent posts found in weekly_schedule.json.")
         return []
 
     seen_urns = _load_seen_urns()
@@ -185,7 +190,7 @@ def fetch_unanswered_comments() -> list[dict]:
                         continue
                     comment_urn = _extract_comment_urn(comment)
                     if not comment_urn:
-                        print(f"  [responder] Comment without URN skipped (post {urn}): {message[:60]}")
+                        log.info(f"Comment without URN skipped (post {urn}): {message[:60]}")
                         continue
                     if comment_urn in seen_urns:
                         continue
@@ -197,12 +202,12 @@ def fetch_unanswered_comments() -> list[dict]:
                         "text": message,
                     })
         except Exception as e:
-            print(f"  [responder] Error processing comments for {urn}: {e}")
+            log.warning(f"Error processing comments for {urn}: {e}")
             continue
 
     if new_urns:
         _save_seen_urns(new_urns)
-    print(f"  [responder] Found {len(unanswered)} unanswered comments.")
+    log.info(f"Found {len(unanswered)} unanswered comments.")
     return unanswered
 
 
@@ -236,7 +241,7 @@ Reply:"""
             temperature = 0.7,
         )
     except Exception as e:
-        print(f"  [responder] generate_reply error: {e}")
+        log.warning(f"generate_reply error: {e}")
         return None
 
 
@@ -246,19 +251,19 @@ def queue_replies() -> None:
 
     comments = fetch_unanswered_comments()
     if not comments:
-        print("  [responder] No unanswered comments to process.")
+        log.info("No unanswered comments to process.")
         return
 
     # Generate replies and send all to Discord first
     pending = []
     for comment in comments:
-        print(f"  [responder] Generating reply to: {comment['text'][:80]}...")
+        log.info(f"Generating reply to: {comment['text'][:80]}...")
         suggested = generate_reply(comment["text"], post_context=f"Post URN: {comment['post_urn']}")
         if suggested is None:
-            print("  [responder] Reply generation failed (LLM error) — skipping.")
+            log.warning("Reply generation failed (LLM error) — skipping.")
             continue
         if not suggested:
-            print("  [responder] Empty reply generated — skipping.")
+            log.info("Empty reply generated — skipping.")
             continue
         msg_id = send_comment_approval(
             comment_author=comment["author"],
@@ -272,15 +277,15 @@ def queue_replies() -> None:
                 "suggested":    suggested,
                 "preview":      comment["text"][:60],
             })
-            print("  [responder] Sent to Discord for approval.")
+            log.info("Sent to Discord for approval.")
         else:
-            print("  [responder] Discord not configured — skipping.")
+            log.info("Discord not configured — skipping.")
 
     if not pending:
         return
 
     # Poll Discord for responses and post approved replies to LinkedIn
-    print(f"  [responder] Waiting for approval of {len(pending)} comment(s)...")
+    log.info(f"Waiting for approval of {len(pending)} comment(s)...")
     for item in pending:
         decision = wait_for_comment_approval(
             message_id     = item["msg_id"],
@@ -290,15 +295,15 @@ def queue_replies() -> None:
         action = decision.get("action")
         if action == "post":
             reply_text = decision["text"]
-            print(f"  [responder] Posting reply to LinkedIn: {reply_text[:60]}...")
+            log.info(f"Posting reply to LinkedIn: {reply_text[:60]}...")
             if post_first_comment(item["comment_urn"], reply_text):
-                print("  [responder] Reply posted successfully.")
+                log.info("Reply posted successfully.")
             else:
-                print("  [responder] LinkedIn reply failed.")
+                log.warning("LinkedIn reply failed.")
         elif action == "skip":
-            print(f"  [responder] Skipped: {item['preview']}")
+            log.info(f"Skipped: {item['preview']}")
         else:
-            print(f"  [responder] No response received for: {item['preview']}")
+            log.info(f"No response received for: {item['preview']}")
 
 
 if __name__ == "__main__":

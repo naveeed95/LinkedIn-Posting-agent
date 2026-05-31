@@ -20,6 +20,11 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+from logger import get_logger
+
+log = get_logger("analytics")
+
+
 load_dotenv()
 
 DB_FILE = Path(__file__).parent / "performance.db"
@@ -191,13 +196,13 @@ def poll_metrics(post_id: str) -> dict:
             timeout=15,
         )
         if not resp.ok:
-            print(f"  [analytics] Poll failed ({resp.status_code}): {resp.text[:200]}")
+            log.warning(f"Poll failed ({resp.status_code}): {resp.text[:200]}")
             return {}
 
         try:
             resp_json = resp.json()
         except Exception as e:
-            print(f"  [analytics] poll_metrics: malformed response from LinkedIn: {e} — body: {resp.text[:200]}")
+            log.info(f"poll_metrics: malformed response from LinkedIn: {e} — body: {resp.text[:200]}")
             return {}
         elements = resp_json.get("elements", [])
         if not elements:
@@ -222,7 +227,7 @@ def poll_metrics(post_id: str) -> dict:
                     posted = datetime.fromisoformat(row["posted_at"])
                     hours = (datetime.now() - posted).total_seconds() / 3600
                 except Exception as e:
-                    print(f"  [analytics] posted_at parse failed for {post_id}: {e}")
+                    log.warning(f"posted_at parse failed for {post_id}: {e}")
 
             conn.execute(
                 """INSERT INTO metrics
@@ -262,11 +267,11 @@ def poll_metrics(post_id: str) -> dict:
     except Exception as e:
         status = getattr(getattr(e, "response", None), "status_code", None)
         if status == 401:
-            print(f"  [analytics] poll_metrics: LinkedIn token expired (401) — run token_refresher.py")
+            log.info(f"poll_metrics: LinkedIn token expired (401) — run token_refresher.py")
         elif status == 429:
-            print(f"  [analytics] poll_metrics: rate limited (429) — will retry next poll cycle")
+            log.info(f"poll_metrics: rate limited (429) — will retry next poll cycle")
         else:
-            print(f"  [analytics] poll_metrics error: {type(e).__name__}: {e}")
+            log.warning(f"poll_metrics error: {type(e).__name__}: {e}")
         return {}
 
 
@@ -278,7 +283,7 @@ def poll_all_recent(days: int = 7) -> None:
             (cutoff,),
         ).fetchall()
     for row in rows:
-        print(f"  [analytics] Polling {row['post_id']}...")
+        log.info(f"Polling {row['post_id']}...")
         poll_metrics(row["post_id"])
     prune_old_records()
 
@@ -293,7 +298,7 @@ def prune_old_records(keep_days: int = 180) -> None:
             "DELETE FROM topics_history WHERE posted_at < ?", (cutoff,)
         ).rowcount
         if deleted_m or deleted_t:
-            print(f"  [analytics] Pruned {deleted_m} metric rows, {deleted_t} topic history rows older than {keep_days}d")
+            log.info(f"Pruned {deleted_m} metric rows, {deleted_t} topic history rows older than {keep_days}d")
 
 
 def get_performance_summary() -> dict:
@@ -416,7 +421,7 @@ def _get_sheets_service():
         )
         return build("sheets", "v4", credentials=creds)
     except Exception as e:
-        print(f"  [analytics] Google Sheets service error: {e}")
+        log.warning(f"Google Sheets service error: {e}")
         return None
 
 
@@ -470,11 +475,11 @@ def write_to_google_sheets(summary: dict, slots: list[dict]) -> str | None:
         ).execute()
 
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
-        print(f"  [analytics] Google Sheet updated: {url}")
+        log.info(f"Google Sheet updated: {url}")
         return url
 
     except Exception as e:
-        print(f"  [analytics] Google Sheets write error: {e}")
+        log.warning(f"Google Sheets write error: {e}")
         return None
 
 

@@ -8,6 +8,11 @@ import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
+from logger import get_logger
+
+log = get_logger("scheduler")
+
+
 SCHEDULE_FILE = Path(__file__).parent / "weekly_schedule.json"
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -117,7 +122,7 @@ def update_slot(slot: dict) -> None:
     week_key = (slot_date - timedelta(days=slot_date.weekday())).isoformat()
     days = schedule.get(week_key, [])
     if not days:
-        print(f"  [scheduler] WARNING: week {week_key} not found in schedule — slot update lost")
+        log.warning(f"WARNING: week {week_key} not found in schedule — slot update lost")
         return
     for i, s in enumerate(days):
         if s["date"] == slot["date"]:
@@ -131,7 +136,7 @@ def get_week_overview() -> list[dict]:
     schedule = load_schedule()
     slots = schedule.get(_week_start().isoformat(), [])
     if slots and len(slots) not in (0, 7):
-        print(f"  [scheduler] WARNING: Week has {len(slots)} slots (expected 7) — schedule may be corrupt")
+        log.warning(f"WARNING: Week has {len(slots)} slots (expected 7) — schedule may be corrupt")
     return slots
 
 

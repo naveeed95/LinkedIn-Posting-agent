@@ -27,7 +27,7 @@ The daily flow is **agentic** — Llama 3.3 70B orchestrates its own tool calls 
 | LLM / Agent | Groq (Llama 3.3 70B + Llama 3.1 8B) |
 | Posting target | LinkedIn Company Page (UGC API) |
 | Approval UX | Discord HTTP API (no gateway) |
-| Research + Rules | Tavily, Exa, Reddit, HN, RSS, Supadata |
+| Research + Rules | Tavily, Exa, Reddit, HN, RSS, HuggingFace |
 | Analytics | SQLite + Google Sheets |
 | Scheduler | GitHub Actions cron |
 
@@ -67,7 +67,6 @@ DISCORD_PLAN_CHANNEL_ID=
 # Optional research + rules (strongly recommended)
 TAVILY_API_KEY=        # used for topic research AND live LinkedIn algorithm rules
 EXA_API_KEY=
-SUPADATA_API_KEY=
 
 # Optional reporting
 GOOGLE_SERVICE_ACCOUNT_JSON=   # base64-encoded service account JSON
@@ -125,7 +124,7 @@ agent_runner.py            # Groq tool-use agent loop (8 tools, daily posting)
 run.py                     # CLI entrypoint
 content_generator.py       # Brand voice, prompts, dynamic generation + strategy
 llm_client.py              # Groq multi-model router
-research.py                # Tavily, Exa, Reddit, HN, RSS, Supadata
+research.py                # Tavily, Exa, Reddit, HN, RSS, HuggingFace
 linkedin_poster.py         # LinkedIn UGC API — post, upload, stats
 discord_bot.py             # Discord HTTP API — approvals, reports
 scheduler.py               # weekly_schedule.json read/write

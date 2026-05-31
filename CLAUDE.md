@@ -42,7 +42,8 @@ agent_runner.py            # Groq tool-use agentic loop (8 tools, daily posting)
 run.py                     # CLI entrypoint, all command flows
 content_generator.py       # Brand voice, prompts, variant gen, quality fix, strategy
 llm_client.py              # Multi-model router (Groq), retries, fallback, parallel variants
-research.py                # RSS, Reddit, HN, HuggingFace, Tavily, Exa, Supadata, article scrape
+research.py                # RSS, Reddit, HN, HuggingFace, Tavily, Exa, article scrape
+logger.py                  # Structured logging — text by default, JSON when LOG_FORMAT=json
 designer.py                # Pillow → 5-slide 1080x1080 carousel PDF (disabled in production)
 linkedin_poster.py         # UGC post, asset upload, document upload, first comment, stats
 linkedin_auth.py           # OAuth: localhost callback, state/CSRF, token + org URN to .env
@@ -91,9 +92,12 @@ output/                    # Generated PDFs / PNGs (gitignored)
 - `GITHUB_REPO` — `owner/name`.
 
 **Optional research:**
-- `TAVILY_API_KEY` — semantic search for topics AND LinkedIn algorithm rules fetch
+- `TAVILY_API_KEY` — semantic search for topics AND LinkedIn algorithm rules fetch (also used for YouTube broad search)
 - `EXA_API_KEY` — find similar content to top past posts
-- `SUPADATA_API_KEY` — YouTube transcripts
+
+**Logging:**
+- `LOG_FORMAT` — `json` for one-line-per-record JSON output (set in all GH Actions workflows), anything else for human-readable text (default).
+- `LOG_LEVEL` — `INFO` (default), `DEBUG`, `WARNING`, etc.
 
 **Optional reporting:**
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — base64-encoded service account JSON.
@@ -228,17 +232,15 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 
 1. **Designer fonts** — `designer.py:46` hardcoded to `C:/Windows/Fonts/`. Falls back to bitmap font on Linux (GitHub Actions). Carousels are text-only in production so this doesn't fire currently.
 2. **`performance.db` lives in artifacts** — 90-day retention, no external backup. Failed upload loses analytics history.
-3. **Supadata channel IDs stale** — Matt Wolfe and Karpathy YouTube channel IDs in `research.py` return "channel does not exist". Update or remove those entries.
-4. **Hacker News** — returning 0 results in recent runs. Check if API query needs updating or if rate-limited.
-5. **No structured logging** — `print` only with `[area]` prefix. Add `logging` module if integrating with cloud log aggregation.
-6. **Discord 2000-char split** — `_send_long_message` splits at `━━━` dividers then newlines. No automated test covers boundary cases.
-7. **Artifact race** — concurrency group prevents parallel runs but a cancelled mid-upload can corrupt state between runs.
-8. **`linkedin_auth.py`** — writes tokens to `.env` via `set_key`. Never run in CI — requires interactive browser flow.
+3. **Hacker News** — three-tier fetch (keyword+date → top-stories-by-points → no-date fallback) in `fetch_hacker_news`. Browser-like UA in `HEADERS` since Algolia rejects niche User-Agents.
+4. **Discord 2000-char split** — `_send_long_message` splits at `━━━` dividers then newlines. No automated test covers boundary cases.
+5. **Artifact race** — concurrency group prevents parallel runs but a cancelled mid-upload can corrupt state between runs.
+6. **`linkedin_auth.py`** — writes tokens to `.env` via `set_key`. Never run in CI — requires interactive browser flow.
 
 ## Conventions
 
 - `--preview` for dry-run (no publish, auto-picks variant 1). `--test` for off-schedule generation.
-- All `print` lines prefixed `[area]` (e.g. `[research]`, `[discord]`, `[content]`, `[llm]`, `[rules]`) for grep-ability.
+- **Structured logging** via `logger.get_logger("area")` — emits text locally, JSON when `LOG_FORMAT=json` (set in all workflows). Areas: `agent`, `analytics`, `auto`, `content`, `discord`, `linkedin`, `llm`, `plan`, `preview`, `research`, `responder`, `rules`, `scheduler`, `startup`, `token_refresher`. Use `extra={"key": value}` for structured fields. CLI UX prints (banners, separators, interactive prompts) stay as `print()`.
 - `BRAND_CONTEXT` and `WRITING_SYSTEM` in `content_generator.py` are source of truth for brand voice. Never inline overrides — use `system_extra` parameter on `_generate()`.
 - Brand colours in `designer.py:16-30` — modify both modern and legacy aliases together.
 - Post format comes from `slot["format"]` set at planning time — read it directly. No `DAY_FORMAT` constant exists.

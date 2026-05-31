@@ -27,9 +27,21 @@ import feedparser
 import requests
 from dotenv import load_dotenv
 
+from logger import get_logger
+
+log = get_logger("research")
+
+
 load_dotenv()
 
-HEADERS = {"User-Agent": "TheTechTutors-PostingAgent/1.0 (LinkedIn AI content research)"}
+# Some public APIs (Algolia, Reddit) reject niche/identifying User-Agents.
+# A browser-like UA is the most reliable across all sources we touch.
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    )
+}
 HN_API  = "https://hn.algolia.com/api/v1/search"
 DESCRIPTION_MAX_CHARS = 300
 
@@ -119,9 +131,9 @@ def fetch_rss_feeds(max_per_feed: int = 8) -> list[dict]:
                     count += 1
                     if count >= max_per_feed:
                         break
-            print(f"  [research] RSS {name}: {count} items")
+            log.info(f"RSS {name}: {count} items")
         except Exception as e:
-            print(f"  [research] RSS {name} failed: {e}")
+            log.warning(f"RSS {name} failed: {e}")
     return items
 
 
@@ -139,7 +151,7 @@ def fetch_reddit(max_per_sub: int = 10) -> list[dict]:
                 timeout=10,
             )
             if not resp.ok:
-                print(f"  [research] Reddit r/{sub} failed ({resp.status_code})")
+                log.warning(f"Reddit r/{sub} failed ({resp.status_code})")
                 continue
             posts = resp.json().get("data", {}).get("children", [])
             count = 0
@@ -153,10 +165,10 @@ def fetch_reddit(max_per_sub: int = 10) -> list[dict]:
                 if title and _is_ai_relevant(title):
                     items.append(_make_topic(title, url, f"Reddit r/{sub}", desc, points=score, published_date=pub))
                     count += 1
-            print(f"  [research] Reddit r/{sub}: {count} items")
+            log.info(f"Reddit r/{sub}: {count} items")
             time.sleep(0.5)  # be polite to Reddit
         except Exception as e:
-            print(f"  [research] Reddit r/{sub} error: {e}")
+            log.warning(f"Reddit r/{sub} error: {e}")
     return items
 
 
@@ -180,23 +192,39 @@ def fetch_huggingface_trending(limit: int = 10) -> list[dict]:
             url   = f"https://huggingface.co/{model_id}"
             tags  = " ".join(model.get("tags", []))[:200]
             items.append(_make_topic(title, url, "HuggingFace Trending", tags))
-        print(f"  [research] HuggingFace trending: {len(items)} models")
+        log.info(f"HuggingFace trending: {len(items)} models")
         return items
     except Exception as e:
-        print(f"  [research] HuggingFace trending failed: {e}")
+        log.warning(f"HuggingFace trending failed: {e}")
         return []
 
 
 # ── Hacker News ────────────────────────────────────────────────────────────────
 
 def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
+    """Three-tier HN fetch — Algolia sometimes returns 0 for keyword+date queries,
+    so tier 2 fetches popular recent stories without a keyword and filters AI-relevant
+    client-side. Tier 3 is a last-resort with no date filter.
+    """
     since = int(time.time()) - days_back * 86400
-    # Single-word / brand queries only — multi-word + date filter returns 0 on HN Algolia
     hn_queries = ["AI", "LLM", "GPT", "Claude", "automation", "OpenAI", "Gemini"]
     items: list[dict] = []
     seen: set[str] = set()
-    per_query = max(4, max_items // len(hn_queries))
 
+    def _add(hit: dict) -> None:
+        title = hit.get("title", "").strip()
+        if not title or not _is_ai_relevant(title):
+            return
+        key = title.lower()[:50]
+        if key in seen:
+            return
+        seen.add(key)
+        url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
+        items.append(_make_topic(title, url, "Hacker News",
+                                 points=hit.get("points", 0),
+                                 published_date=hit.get("created_at", "")))
+
+    per_query = max(4, max_items // len(hn_queries))
     for query in hn_queries:
         try:
             resp = requests.get(
@@ -212,19 +240,37 @@ def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
             )
             resp.raise_for_status()
             for hit in resp.json().get("hits", []):
-                title = hit.get("title", "").strip()
-                url   = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
-                key   = title.lower()[:50]
-                if title and key not in seen and _is_ai_relevant(title):
-                    seen.add(key)
-                    items.append(_make_topic(title, url, "Hacker News",
-                                             points=hit.get("points", 0),
-                                             published_date=hit.get("created_at", "")))
+                _add(hit)
         except Exception as e:
-            print(f"  [research] Hacker News query '{query}' failed: {e}")
+            log.warning(f"HN tier 1 query '{query}' failed: {e}")
 
+    tier1_count = len(items)
+    log.info(f"HN tier 1 (keyword+date): {tier1_count} items")
+
+    # Tier 2 — top recent stories by points, client-side AI filter.
+    # Catches AI stories whose titles use unusual phrasing not in hn_queries.
+    if tier1_count < 10:
+        try:
+            resp = requests.get(
+                HN_API,
+                params={
+                    "tags":           "story",
+                    "hitsPerPage":    50,
+                    "numericFilters": f"created_at_i>{since},points>50",
+                },
+                headers=HEADERS,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            for hit in resp.json().get("hits", []):
+                _add(hit)
+            log.info(f"HN tier 2 (top stories): +{len(items) - tier1_count}")
+        except Exception as e:
+            log.warning(f"HN tier 2 failed: {e}")
+
+    # Tier 3 — drop date filter as last resort
     if len(items) < 3:
-        print(f"  [research] WARNING: HN returned only {len(items)} items — retrying without date filter")
+        log.warning(f"HN still only {len(items)} items — dropping date filter")
         try:
             resp = requests.get(
                 HN_API,
@@ -234,19 +280,12 @@ def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
             )
             resp.raise_for_status()
             for hit in resp.json().get("hits", []):
-                title = hit.get("title", "").strip()
-                url   = hit.get("url") or f"https://news.ycombinator.com/item?id={hit['objectID']}"
-                key   = title.lower()
-                if title and key not in seen and _is_ai_relevant(title):
-                    seen.add(key)
-                    items.append(_make_topic(title, url, "Hacker News",
-                                             points=hit.get("points", 0),
-                                             published_date=hit.get("created_at", "")))
-            print(f"  [research] HN fallback (no date filter): {len(items)} total items")
+                _add(hit)
+            log.info(f"HN tier 3 (no date filter): {len(items)} total")
         except Exception as e:
-            print(f"  [research] HN fallback failed: {e}")
-    else:
-        print(f"  [research] Hacker News: {len(items)} items")
+            log.warning(f"HN tier 3 failed: {e}")
+
+    log.info(f"Hacker News total: {len(items)} items")
     return items
 
 
@@ -255,13 +294,13 @@ def fetch_hacker_news(days_back: int = 7, max_items: int = 20) -> list[dict]:
 def fetch_tavily_topics(domain: str = "", keywords: list[str] | None = None) -> list[dict]:
     api_key = os.environ.get("TAVILY_API_KEY", "")
     if not api_key:
-        print("  [research] TAVILY_API_KEY not set — skipping.")
+        log.info("TAVILY_API_KEY not set — skipping.")
         return []
     try:
         from tavily import TavilyClient
         client = TavilyClient(api_key=api_key)
     except ImportError:
-        print("  [research] tavily-python not installed — skipping.")
+        log.info("tavily-python not installed — skipping.")
         return []
 
     if domain and keywords:
@@ -287,8 +326,8 @@ def fetch_tavily_topics(domain: str = "", keywords: list[str] | None = None) -> 
                 if title and url:
                     items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:DESCRIPTION_MAX_CHARS]))
         except Exception as e:
-            print(f"  [research] Tavily query failed: {e}")
-    print(f"  [research] Tavily: {len(items)} items")
+            log.warning(f"Tavily query failed: {e}")
+    log.info(f"Tavily: {len(items)} items")
     return items
 
 
@@ -297,7 +336,7 @@ def fetch_tavily_topics(domain: str = "", keywords: list[str] | None = None) -> 
 def fetch_exa_similar(top_post_urls: list[str]) -> list[dict]:
     api_key = os.environ.get("EXA_API_KEY", "")
     if not api_key:
-        print("  [research] EXA_API_KEY not set — skipping.")
+        log.info("EXA_API_KEY not set — skipping.")
         return []
     if not top_post_urls:
         return []
@@ -305,7 +344,7 @@ def fetch_exa_similar(top_post_urls: list[str]) -> list[dict]:
         from exa_py import Exa
         exa = Exa(api_key=api_key)
     except ImportError:
-        print("  [research] exa-py not installed — skipping.")
+        log.info("exa-py not installed — skipping.")
         return []
 
     items = []
@@ -318,8 +357,8 @@ def fetch_exa_similar(top_post_urls: list[str]) -> list[dict]:
                 if title.strip() and link:
                     items.append(_make_topic(title.strip(), link, "Exa Similar"))
         except Exception as e:
-            print(f"  [research] Exa find_similar failed: {e}")
-    print(f"  [research] Exa: {len(items)} items")
+            log.warning(f"Exa find_similar failed: {e}")
+    log.info(f"Exa: {len(items)} items")
     return items
 
 
@@ -337,13 +376,13 @@ YOUTUBE_AI_QUERIES = [
 def fetch_youtube_search() -> list[dict]:
     api_key = os.environ.get("TAVILY_API_KEY", "")
     if not api_key:
-        print("  [research] TAVILY_API_KEY not set — skipping YouTube search.")
+        log.info("TAVILY_API_KEY not set — skipping YouTube search.")
         return []
     try:
         from tavily import TavilyClient
         client = TavilyClient(api_key=api_key)
     except ImportError:
-        print("  [research] tavily-python not installed — skipping YouTube search.")
+        log.info("tavily-python not installed — skipping YouTube search.")
         return []
 
     items = []
@@ -356,8 +395,8 @@ def fetch_youtube_search() -> list[dict]:
                 if "youtube.com/watch" in url and title:
                     items.append(_make_topic(title, url, "YouTube", r.get("content", "")[:DESCRIPTION_MAX_CHARS]))
         except Exception as e:
-            print(f"  [research] YouTube search query failed: {e}")
-    print(f"  [research] YouTube search: {len(items)} videos")
+            log.warning(f"YouTube search query failed: {e}")
+    log.info(f"YouTube search: {len(items)} videos")
     return items
 
 
@@ -396,9 +435,9 @@ def fetch_reddit_ai_search(max_per_query: int = 5) -> list[dict]:
                                              points=score,
                                              published_date=str(d.get("created_utc", ""))))
         except Exception as e:
-            print(f"  [research] Reddit AI search '{query}' failed: {e}")
+            log.warning(f"Reddit AI search '{query}' failed: {e}")
         time.sleep(0.3)
-    print(f"  [research] Reddit broad AI search: {len(items)} items")
+    log.info(f"Reddit broad AI search: {len(items)} items")
     return items
 
 
@@ -424,17 +463,17 @@ def fetch_article_content(url: str, max_chars: int = 3000) -> str:
         )
         text = (main or soup).get_text(separator=" ", strip=True)
         text = re.sub(r"\s+", " ", text).strip()
-        print(f"  [research] Article fetched: {len(text)} chars from {url[:60]}")
+        log.info(f"Article fetched: {len(text)} chars from {url[:60]}")
         return text[:max_chars]
     except requests.exceptions.HTTPError as e:
         status = getattr(e.response, "status_code", "?")
-        print(f"  [research] Article fetch HTTP {status}: {url[:60]}")
+        log.info(f"Article fetch HTTP {status}: {url[:60]}")
         return ""
     except requests.exceptions.Timeout:
-        print(f"  [research] Article fetch timeout: {url[:60]}")
+        log.warning(f"Article fetch timeout: {url[:60]}")
         return ""
     except Exception as e:
-        print(f"  [research] Article fetch {type(e).__name__}: {url[:60]} — {e}")
+        log.info(f"Article fetch {type(e).__name__}: {url[:60]} — {e}")
         return ""
 
 
@@ -461,7 +500,7 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
                         if title and url:
                             items.append(_make_topic(title, url, "Tavily", r.get("content", "")[:DESCRIPTION_MAX_CHARS]))
                 except Exception as e:
-                    print(f"  [research] Deep Tavily query failed: {e}")
+                    log.warning(f"Deep Tavily query failed: {e}")
         except ImportError:
             pass
 
@@ -486,7 +525,7 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
             if title:
                 items.append(_make_topic(title, url, "Hacker News", points=hit.get("points", 0)))
     except Exception as e:
-        print(f"  [research] Deep HN search failed: {e}")
+        log.warning(f"Deep HN search failed: {e}")
 
     # Targeted Reddit search
     try:
@@ -504,7 +543,7 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
                 if title and _is_ai_relevant(title):
                     items.append(_make_topic(title, url, "Reddit Search", points=d.get("score", 0)))
     except Exception as e:
-        print(f"  [research] Reddit search failed: {e}")
+        log.warning(f"Reddit search failed: {e}")
 
     # Deduplicate and sort by virality
     seen:   set[str]   = set()
@@ -515,7 +554,7 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
             seen.add(key)
             unique.append(t)
 
-    print(f"  [research] Deep research: {len(unique)} sources found for '{topic_title}'")
+    log.info(f"Deep research: {len(unique)} sources found for '{topic_title}'")
     return unique[:10]
 
 

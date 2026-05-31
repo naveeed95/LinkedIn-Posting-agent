@@ -7,9 +7,15 @@ Called from run.py cmd_auto().
 import os
 from datetime import datetime, date
 
+from logger import get_logger
+
+log_agent = get_logger("agent")
+log_preview = get_logger("preview")
+
 
 def _log(level: str, msg: str) -> None:
-    print(f"[agent][{level}] {datetime.now().strftime('%H:%M:%S')} {msg}")
+    fn = log_agent.warning if level.upper() in ("WARNING", "ERROR") else log_agent.info
+    fn(msg)
 
 
 def run_agent(target_date: str | None = None, preview: bool = False) -> None:
@@ -60,6 +66,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         _log("INFO", "Fetching trending topics from all sources...")
         try:
             from analytics_tracker import get_top_post_urls
+
             top_urls = get_top_post_urls(n=3)
         except Exception:
             top_urls = []
@@ -183,7 +190,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             print("=" * 60)
             print(post_text)
             print("=" * 60 + "\n")
-            print("[preview] Auto-approving — not sending to Discord.")
+            log_preview.info("Auto-approving — not sending to Discord.")
             return {"action": "post", "auto": True}
 
         topic = state["topic"]
@@ -192,8 +199,8 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         msg_id = send_approval_message(variants, [score], topic, day)
 
         if not msg_id:
-            print("[agent] WARNING: Discord not configured — cannot request approval. Skipping today's post.")
-            print("[agent] Set DISCORD_BOT_TOKEN and DISCORD_APPROVALS_CHANNEL_ID to enable approval flow.")
+            log_agent.warning("WARNING: Discord not configured — cannot request approval. Skipping today's post.")
+            log_agent.info("Set DISCORD_BOT_TOKEN and DISCORD_APPROVALS_CHANNEL_ID to enable approval flow.")
             return {"action": "skip", "reason": "Discord not configured — approval required but unavailable"}
 
         decision = wait_for_approval(msg_id, timeout_minutes=120, num_variants=1)
@@ -207,7 +214,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         topic = state["topic"] or {}
         day = state["day"]
         if preview:
-            print("[preview] Publish skipped — preview mode active.")
+            log_preview.info("Publish skipped — preview mode active.")
             state["done"] = True
             return {"status": "preview", "message": "Post generated and scored — not published."}
         try:
@@ -224,7 +231,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                     "chosen_model": chosen_model,
                 })
             except Exception as e:
-                print(f"  [agent] Analytics log failed: {e}")
+                log_agent.warning(f"Analytics log failed: {e}")
 
             source_url = topic.get("source_url", "")
             landing = os.environ.get("LANDING_PAGE_URL", "")
@@ -245,7 +252,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         try:
             notify_timeout(state["day"], state["date"])
         except Exception as e:
-            print(f"[agent] notify_timeout failed: {e}")
+            log_agent.warning(f"notify_timeout failed: {e}")
         state["done"] = True
         _log("INFO", f"Skipped: {reason}")
         return {"status": "skipped", "reason": reason}

@@ -14,8 +14,11 @@ from llm_client import (
     call_with_fallback,
     generate_variants,
 )
+from logger import get_logger
 
 load_dotenv()
+
+log = get_logger("content")
 
 # ── Brand Identity ────────────────────────────────────────────────────────────
 
@@ -235,7 +238,7 @@ def _get_rules_prompt() -> str:
         _rules_cache = (result, now)
         return result
     except Exception as e:
-        print(f"  [content] Rules fetch skipped: {e}")
+        log.info(f"Rules fetch skipped: {e}")
         return ""
 
 
@@ -310,10 +313,10 @@ Return ONLY valid JSON, nothing else:
             data = json.loads(raw[start:end])
             score = max(0, min(100, int(data["score"])))
             advice = str(data.get("advice", "")).strip()
-            print(f"  [content] LLM score: {score}/100")
+            log.info(f"LLM score: {score}/100")
             return {"score": score, "advice": advice}
     except Exception as e:
-        print(f"  [content] LLM scorer failed ({e}) — falling back to rule-based scorer")
+        log.warning(f"LLM scorer failed ({e}) — falling back to rule-based scorer")
 
     return _rule_based_score(variant, past_performance)
 
@@ -521,7 +524,7 @@ Return ONLY valid JSON array, exactly 7 objects (day_index 0–6):
     existing_indices = {p.get("day_index") for p in planned}
     for i in range(7):
         if i not in existing_indices:
-            print(f"  [content] WARNING: LLM returned no slot for day_index {i} — inserting fallback")
+            log.warning(f"WARNING: LLM returned no slot for day_index {i} — inserting fallback")
             planned.append({
                 "day_index": i,
                 "title": "— fallback slot —",
@@ -550,7 +553,7 @@ def generate_text_post_variants(
     llm_client.VARIANT_MODELS["text"] and how many succeed.
     """
     if n != 2:
-        print(f"  [content] WARNING: n={n} ignored — variant count controlled by llm_client.VARIANT_MODELS")
+        log.warning(f"WARNING: n={n} ignored — variant count controlled by llm_client.VARIANT_MODELS")
     rules_prompt = _get_rules_prompt()
 
     hint_block = f"\nUser instruction for regeneration: {hint}\n" if hint else ""
@@ -632,9 +635,9 @@ Return ONLY the post text — no preamble, no labels, no explanations."""
             v["text"] = _fix_post_quality(v["text"])
             found = _BANNED_WORDS_PATTERN.findall(v["text"])
             if found:
-                print(f"  [content] WARNING: banned words remain after quality fix for {v['display_name']}: {found}")
+                log.warning(f"WARNING: banned words remain after quality fix for {v['display_name']}: {found}")
         except Exception as e:
-            print(f"  [content] Quality fix failed for {v['display_name']}: {e}")
+            log.warning(f"Quality fix failed for {v['display_name']}: {e}")
 
     return variants
 
@@ -740,14 +743,14 @@ Return ONLY valid JSON, no markdown fences:
             try:
                 content["caption"] = _fix_post_quality(content.get("caption", ""))
             except Exception as e:
-                print(f"  [content] Quality fix failed for {v['display_name']}: {e}")
+                log.warning(f"Quality fix failed for {v['display_name']}: {e}")
             results.append({
                 "model_key":    v["model_key"],
                 "display_name": v["display_name"],
                 "content":      content,
             })
         except Exception as e:
-            print(f"  [content] {v['display_name']} carousel JSON failed: {str(e)[:120]} — dropping")
+            log.warning(f"{v['display_name']} carousel JSON failed: {str(e)[:120]} — dropping")
             continue
 
     if not results:

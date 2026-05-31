@@ -41,4 +41,5 @@ jobs:
           LINKEDIN_ORG_URN: ${{ secrets.LINKEDIN_ORG_URN }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_COMMENTS_CHANNEL_ID: ${{ secrets.DISCORD_COMMENTS_CHANNEL_ID }}
+          LOG_FORMAT: json
         run: python auto_responder.py

@@ -22,7 +22,11 @@ import sys
 import requests
 from dotenv import load_dotenv, set_key
 
+from logger import get_logger
+
 load_dotenv()
+
+log = get_logger("token_refresher")
 
 TOKEN_URL  = "https://www.linkedin.com/oauth/v2/accessToken"
 GITHUB_API = "https://api.github.com"
@@ -106,7 +110,7 @@ def _notify_discord(message: str) -> None:
             timeout=10,
         )
     except Exception as e:
-        print(f"  [token_refresher] Discord alert failed: {e}")
+        log.warning(f"Discord alert failed: {e}")
 
 
 def main():
