@@ -93,7 +93,6 @@ MODELS = {
 
 VARIANT_MODELS = {
     "text":     ["deepseek-pro"],
-    "carousel": ["deepseek-pro"],
     "research": ["deepseek-pro"],
 }
 
@@ -177,6 +176,7 @@ def call_with_fallback(
     prompt: str,
     system: str = "",
     max_tokens: int = 2500,
+    temperature: float | None = None,
 ) -> str:
     """Try each model in order. Return the first one that succeeds.
 
@@ -191,7 +191,7 @@ def call_with_fallback(
     last_error: Exception | None = None
     for model_key in available:
         try:
-            return call_model(model_key, prompt, system, max_tokens)
+            return call_model(model_key, prompt, system, max_tokens, temperature)
         except Exception as e:
             log.warning(f"{model_key} failed: {str(e)[:120]} — trying next")
             last_error = e

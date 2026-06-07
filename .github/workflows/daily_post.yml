@@ -39,6 +39,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Cache MiniLM embedding model (topic dedup)
+        uses: actions/cache@v4
+        with:
+          path: .st_cache
+          key: minilm-l6-v2
+
       - name: Download performance DB
         uses: actions/download-artifact@v4
         with:
@@ -97,16 +103,15 @@ jobs:
           DISCORD_APPROVALS_CHANNEL_ID: ${{ secrets.DISCORD_APPROVALS_CHANNEL_ID }}
           DISCORD_POSTED_CHANNEL_ID: ${{ secrets.DISCORD_POSTED_CHANNEL_ID }}
           DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
-          DISCORD_PLAN_CHANNEL_ID: ${{ secrets.DISCORD_PLAN_CHANNEL_ID }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           LOG_FORMAT: json
           LANDING_PAGE_URL: ${{ secrets.LANDING_PAGE_URL }}
         run: |
           if [ "${{ github.event.inputs.preview }}" = "true" ]; then
-            python run.py auto --preview
+            python run.py --preview
           else
-            python run.py auto
+            python run.py
           fi
 
       - name: Upload performance DB

@@ -156,7 +156,7 @@ _rules_cache: tuple[str, float] | None = None
 _RULES_CACHE_TTL = 3600  # 1 hour
 
 
-def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> str:
+def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048, temperature: float | None = None) -> str:
     """Single-shot generation for strategy and utility calls.
 
     Routes through the multi-provider router so we use the best available free
@@ -170,10 +170,11 @@ def _generate(prompt: str, system_extra: str = "", max_tokens: int = 2048) -> st
     if system_extra:
         system += "\n\n" + system_extra
     return call_with_fallback(
-        model_keys = [STRATEGY_MODEL],
-        prompt     = prompt,
-        system     = system,
-        max_tokens = max_tokens,
+        model_keys  = [STRATEGY_MODEL],
+        prompt      = prompt,
+        system      = system,
+        max_tokens  = max_tokens,
+        temperature = temperature,
     )
 
 
@@ -366,178 +367,6 @@ Return ONLY valid JSON:
     return json.loads(_extract_json(raw, "{"))
 
 
-def choose_weekly_strategy(
-    performance_data: dict | None = None,
-    recent_titles: list[str] | None = None,
-    trending_sample: list[dict] | None = None,
-) -> dict:
-
-    perf_block = ""
-    if performance_data and performance_data.get("top_post_topic"):
-        perf_block = (
-            "\nPAST PERFORMANCE:\n"
-            f"  Best hook: {performance_data.get('best_hook_type', 'bold')}\n"
-            f"  Best day:  {performance_data.get('best_day', 'Tuesday')}\n"
-            f"  Top post:  {performance_data.get('top_post_topic', '—')}\n"
-        )
-
-    avoid_block = ""
-    if recent_titles:
-        avoid_block = "\nRECENTLY COVERED — do NOT repeat these themes:\n" + "\n".join(
-            f"- {t}" for t in recent_titles[:10]
-        )
-
-    trending_block = ""
-    if trending_sample:
-        lines = [
-            f"{i+1}. [{t['source']}] {t['title']}"
-            for i, t in enumerate(trending_sample[:15])
-        ]
-        trending_block = "\nTHIS WEEK'S TOP TRENDING AI HEADLINES (use these to ground your choice):\n" + "\n".join(lines) + "\n"
-
-    prompt = f"""You are The Tech Tutors' content strategist. Choose this week's LinkedIn content strategy.
-
-TODAY: {_date.today().isoformat()}
-AUDIENCE: SMB owners (1–50 employees), 30–55, pressed for time, skeptical of hype.
-GOAL: Based on what is actually trending RIGHT NOW, identify the ONE AI subdomain with the highest urgency for SMB owners this week.
-{trending_block}{perf_block}{avoid_block}
-
-SELECTION CRITERIA — pick the domain that scores highest on ALL of these:
-✓ Directly supported by 2+ of the trending headlines above (ground your choice in real evidence)
-✓ Has a specific monetary or time-saving benefit for a business under 50 people
-✓ Something a business owner can act on this week without hiring a developer
-✓ Not covered in the RECENTLY COVERED list above
-✓ Ideally under $100/month for the owner to try
-
-Do NOT pick from a fixed list — derive the domain from the headlines themselves.
-Name it specifically (e.g. "AI invoice automation for freelancers", not "AI Tools").
-
-Also pick the best LinkedIn posting time based on current algorithm rules in your context (typically 8–10am local for B2B).
-
-Return ONLY valid JSON:
-{{
-  "domain": "specific AI subdomain derived from trending headlines",
-  "focus_keywords": ["3–5 specific search terms relevant RIGHT NOW, include year 2026"],
-  "content_pillar": "one sentence: the single most urgent SMB pain point this domain solves this week",
-  "posting_time": "8am PKT",
-  "rationale": "2 sentences: (1) which headlines support this domain, (2) specific SMB pain it addresses"
-}}"""
-
-    raw = _generate(prompt, max_tokens=500)
-    return json.loads(_extract_json(raw, "{"))
-
-
-def plan_weekly_posts(
-    topics: list[dict],
-    num_posts: int = 7,
-    recent_titles: list[str] | None = None,
-    performance_data: dict | None = None,
-    strategy: dict | None = None,
-) -> list[dict]:
-    topics_text = "\n".join(
-        f"{i+1}. [{t['source']}] {t['title']} — {t.get('description', '')} ({t['url']})"
-        for i, t in enumerate(topics[:35])
-    )
-
-    avoid_block = ""
-    if recent_titles:
-        avoid_block = (
-            "\nRECENTLY COVERED — do NOT repeat these themes:\n"
-            + "\n".join(f"- {t}" for t in recent_titles)
-        )
-
-    perf_block = ""
-    if performance_data and performance_data.get("top_post_topic"):
-        best_hook   = performance_data.get("best_hook_type", "bold")
-        best_day    = performance_data.get("best_day", "Tuesday")
-        top_topic   = performance_data.get("top_post_topic", "")
-        hook_scores = performance_data.get("hook_scores", {})
-        day_scores  = performance_data.get("day_scores", {})
-        hook_lines  = ", ".join(f"{h}={s}" for h, s in hook_scores.items()) if hook_scores else "no data yet"
-        day_lines   = ", ".join(f"{d}={s}" for d, s in day_scores.items()) if day_scores else "no data yet"
-        perf_block = (
-            "\nPAST PERFORMANCE — favour topics that match these patterns:\n"
-            f"  Best hook type: {best_hook} (scores: {hook_lines})\n"
-            f"  Best posting day: {best_day} (scores: {day_lines})\n"
-            f"  Top-performing topic: {top_topic}\n"
-        )
-
-    strategy_block = ""
-    if strategy:
-        strategy_block = f"""
-THIS WEEK'S FOCUS
-═══════════════════════════════════════════════════════════
-Domain:         {strategy.get('domain', 'AI for Small Business')}
-Content Pillar: {strategy.get('content_pillar', '')}
-Keywords:       {', '.join(strategy.get('focus_keywords', []))}
-Rationale:      {strategy.get('rationale', '')}
-═══════════════════════════════════════════════════════════
-"""
-
-    domain_name = strategy.get("domain", "") if strategy else ""
-
-    prompt = f"""You are planning The Tech Tutors' LinkedIn content for Mon–Sun (7 posts, one per day).
-
-AUDIENCE: SMB owners (1–50 employees), 30–55, pressed for time, skeptical of hype.
-They care about: saving hours/week, cutting costs, staying competitive without needing developers.
-They ignore: generic AI hype, academic research, enterprise-only tools.
-{strategy_block}
-TRENDING TOPICS THIS WEEK (pick from these):
-{topics_text}
-{avoid_block}
-{perf_block}
-
-YOUR TASK:
-For each of the 7 days (Monday–Sunday), pick the BEST topic and decide the post angle and strategy.
-Use the LinkedIn algorithm rules injected in your system context to decide what content style performs best on each day.
-Vary the content mix across the week — different angles, different hook styles, different content types (insights, how-tos, tools, stats, questions, opinions) so the week doesn't feel repetitive.
-
-QUALITY RULES for every slot:
-• Angle must contain a specific number, tool name, time saving, or concrete outcome — no vague claims
-• Topic must be actionable for a business owner without a developer
-• Reject any topic that is enterprise-only, purely academic, or has no clear SMB benefit
-• Use past performance data above to favour hook styles and days that have worked
-
-SCORING (apply per topic):
-• Base 1–10: SMB relevance (not general AI importance)
-• +2 if aligns with this week's domain: {domain_name}
-• +2 if contains specific numbers (%, $, hrs, price)
-• -3 if enterprise/government/academic focus
-• -3 if in the RECENTLY COVERED list
-
-Return ONLY valid JSON array, exactly 7 objects (day_index 0–6):
-[
-  {{
-    "day_index": 0,
-    "title": "topic title under 8 words",
-    "source_url": "exact URL from topic list above",
-    "angle": "one sentence under 20 words — specific tool/number/outcome",
-    "format": "text",
-    "score": 8,
-    "why": "one sentence: what post style you chose for this day and why"
-  }}
-]"""
-
-    raw = _generate(prompt, max_tokens=2000)
-    planned = json.loads(_extract_json(raw, "["))
-    # Ensure exactly 7 slots — pad with fallback entries if LLM returned fewer
-    existing_indices = {p.get("day_index") for p in planned}
-    for i in range(7):
-        if i not in existing_indices:
-            log.warning(f"WARNING: LLM returned no slot for day_index {i} — inserting fallback")
-            planned.append({
-                "day_index": i,
-                "title": "— fallback slot —",
-                "source_url": "",
-                "angle": "",
-                "format": "text",
-                "score": 0,
-                "why": "auto-generated fallback",
-            })
-    planned.sort(key=lambda x: x.get("day_index", 99))
-    return planned[:7]
-
-
 def generate_text_post_variants(
     topic: dict,
     n: int = 2,                          # kept for backward compatibility, ignored
@@ -640,123 +469,6 @@ Return ONLY the post text — no preamble, no labels, no explanations."""
             log.warning(f"Quality fix failed for {v['display_name']}: {e}")
 
     return variants
-
-
-def generate_carousel_content(
-    topic: dict,
-    article_text: str = "",
-    top_hashtags: list[str] | None = None,
-) -> list[dict]:
-    """Generate one structured 5-slide carousel per enabled creative model.
-
-    Returns a list of dicts: [{"model_key", "display_name", "content"}, ...]
-    where `content` is the parsed JSON carousel structure (slide1..slide5 + caption).
-    Models that fail to produce valid JSON are dropped with a warning.
-    """
-    rules_prompt  = _get_rules_prompt()
-    hashtag_block = f"\nTop-performing hashtags (use 2-3 in caption): {' '.join(top_hashtags[:8])}\n" if top_hashtags else ""
-
-    if article_text:
-        source_block = f"\nFULL ARTICLE TEXT (extract REAL numbers, facts, and quotes from this — do NOT make up statistics):\n{article_text[:7000]}\n"
-    elif topic.get("research_context"):
-        source_block = f"\nRESEARCH SOURCES:\n{topic['research_context']}\n"
-    else:
-        source_block = ""
-
-    prompt = f"""You are creating LinkedIn carousel content for The Tech Tutors — a company that builds custom AI tools and automations for small and medium businesses.
-
-TOPIC:  {topic['title']}
-ANGLE:  {topic['angle']}
-SOURCE: {topic['source_url']}
-{source_block}{hashtag_block}
-
-TARGET AUDIENCE: Small/medium business owners, 30-55. Time-pressed, skeptical of hype. They want SPECIFIC numbers and outcomes — not vague advice.
-
-BRAND VOICE: Direct, confident, zero fluff. Like a knowledgeable friend. Grade 6 reading level. Short sentences win.
-
-CRITICAL RULES:
-- Use REAL specific numbers from the article. If no number exists, use a reasonable estimate and flag it as "est."
-- Every point must be immediately useful or surprising
-- No corporate jargon. No "leverage", "synergy", "game-changer"
-- Each slide has ONE job. Do not mix messages.
-
-CREATE CONTENT FOR 5 SLIDES:
-
-SLIDE 1 — HOOK (makes someone stop scrolling)
-  headline: Bold statement or provocative fact, max 8 words, makes them NEED to read on
-  subheadline: What they'll learn from this carousel, max 10 words
-
-SLIDE 2 — SITUATION (3 hard facts about what's happening right now)
-  section_title: "WHAT'S HAPPENING" (exact wording)
-  stats: exactly 3 items, each with:
-    stat: The number itself — e.g. "67%", "10 hrs/week", "$4,200 saved" — max 5 words
-    context: Plain English explanation of that number — max 12 words
-
-SLIDE 3 — IMPACT (why SMB owners specifically should care)
-  section_title: "WHY YOUR BUSINESS IS AFFECTED" (exact wording)
-  impacts: exactly 3 items, each with:
-    title: The specific outcome for an SMB — max 7 words, starts with a noun
-    detail: One supporting fact with a number or timeframe — max 14 words
-
-SLIDE 4 — ACTION (3 things to do THIS week, not someday)
-  section_title: "YOUR ACTION PLAN" (exact wording)
-  steps: exactly 3 steps, each with:
-    action: Strong verb + what to do — max 7 words
-    detail: Specific how-to with a tool name or timeframe — max 14 words
-
-SLIDE 5 — TAKEAWAY + CTA
-  takeaway: One sentence they will screenshot. Quotable. Punchy. Max 18 words.
-  cta: "Follow The Tech Tutors for weekly AI insights that grow your business" (exact wording)
-
-ALSO: caption — full LinkedIn post (1,200-1,800 chars):
-  - Hook line first (single punchy line, max 12 words)
-  - Reference 2-3 specific facts from the slides
-  - Every sentence on its own line, blank line between sections
-  - End with ONE specific question relevant to their business
-  - Last line: 3-5 hashtags including #TheTechTutors
-
-Return ONLY valid JSON, no markdown fences:
-{{
-  "slide1": {{"headline": "...", "subheadline": "..."}},
-  "slide2": {{"section_title": "WHAT'S HAPPENING", "stats": [{{"stat": "...", "context": "..."}}, {{"stat": "...", "context": "..."}}, {{"stat": "...", "context": "..."}}]}},
-  "slide3": {{"section_title": "WHY YOUR BUSINESS IS AFFECTED", "impacts": [{{"title": "...", "detail": "..."}}, {{"title": "...", "detail": "..."}}, {{"title": "...", "detail": "..."}}]}},
-  "slide4": {{"section_title": "YOUR ACTION PLAN", "steps": [{{"action": "...", "detail": "..."}}, {{"action": "...", "detail": "..."}}, {{"action": "...", "detail": "..."}}]}},
-  "slide5": {{"takeaway": "...", "cta": "Follow The Tech Tutors for weekly AI insights that grow your business"}},
-  "caption": "..."
-}}"""
-
-    system = BRAND_CONTEXT + "\n\n" + WRITING_SYSTEM
-    if rules_prompt:
-        system += "\n\n" + rules_prompt
-
-    raw_variants = generate_variants(
-        job        = "carousel",
-        prompt     = prompt,
-        system     = system,
-        max_tokens = 3000,
-    )
-
-    results: list[dict] = []
-    for v in raw_variants:
-        try:
-            content = json.loads(_extract_json(v["text"], "{"))
-            try:
-                content["caption"] = _fix_post_quality(content.get("caption", ""))
-            except Exception as e:
-                log.warning(f"Quality fix failed for {v['display_name']}: {e}")
-            results.append({
-                "model_key":    v["model_key"],
-                "display_name": v["display_name"],
-                "content":      content,
-            })
-        except Exception as e:
-            log.warning(f"{v['display_name']} carousel JSON failed: {str(e)[:120]} — dropping")
-            continue
-
-    if not results:
-        raise RuntimeError("All carousel models failed to produce valid JSON")
-
-    return results
 
 
 def generate_research_report(

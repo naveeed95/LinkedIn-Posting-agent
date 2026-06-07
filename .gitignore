@@ -7,6 +7,9 @@ performance.db
 # Cache (keep .gitkeep, ignore generated JSON)
 cache/*.json
 
+# MiniLM embedding model weights (downloaded on first run, ~80MB)
+.st_cache/
+
 # Python
 __pycache__/
 *.pyc

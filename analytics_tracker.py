@@ -92,6 +92,7 @@ def _init_db() -> None:
             CREATE TABLE IF NOT EXISTS topics_history (
                 id               INTEGER PRIMARY KEY,
                 topic            TEXT,
+                topic_text       TEXT,
                 posted_at        TIMESTAMP,
                 engagement_score REAL DEFAULT 0
             );
@@ -108,6 +109,13 @@ def _init_db() -> None:
             );
         """)
         conn.commit()
+        # Migrate existing DBs that predate the topic_text column
+        try:
+            conn.execute("ALTER TABLE topics_history ADD COLUMN topic_text TEXT")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
         # Add indexes for fast lookups (safe to run on existing DBs)
         conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_posts_post_id    ON posts (post_id);
@@ -173,9 +181,12 @@ def log_post(post_data: dict) -> None:
                 post_data.get("chosen_model", ""),
             ),
         )
+        topic_title = post_data.get("topic_title", "")
+        topic_angle = post_data.get("topic_angle", "")
+        topic_text = f"{topic_title} — {topic_angle}" if topic_angle else topic_title
         conn.execute(
-            "INSERT INTO topics_history (topic, posted_at) VALUES (?, ?)",
-            (post_data.get("topic_title", ""), datetime.now().isoformat()),
+            "INSERT INTO topics_history (topic, topic_text, posted_at) VALUES (?, ?, ?)",
+            (topic_title, topic_text, datetime.now().isoformat()),
         )
 
 
@@ -374,6 +385,41 @@ def get_topic_history(days: int = 14) -> list[str]:
     return [r["topic"] for r in rows if r["topic"]]
 
 
+def get_recent_topic_texts(days: int = 10) -> list[dict]:
+    """Recent posted topics as {"text": title+angle, "days_ago": float} for
+    semantic-similarity dedup scoring (see topic_similarity.apply_dedup_penalty)."""
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT topic, topic_text, posted_at FROM topics_history "
+            "WHERE posted_at >= ? ORDER BY posted_at DESC",
+            (cutoff,),
+        ).fetchall()
+    now = datetime.now()
+    out = []
+    for r in rows:
+        text = r["topic_text"] or r["topic"]
+        if not text:
+            continue
+        try:
+            posted = datetime.fromisoformat(r["posted_at"])
+            days_ago = max(0.0, (now - posted).total_seconds() / 86400)
+        except (ValueError, TypeError):
+            days_ago = 0.0
+        out.append({"text": text, "days_ago": days_ago})
+    return out
+
+
+def get_recent_post_urns(days: int = 7) -> list[str]:
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT post_id FROM posts WHERE posted_at >= ? AND post_id != '' ORDER BY posted_at DESC",
+            (cutoff,),
+        ).fetchall()
+    return [r["post_id"] for r in rows]
+
+
 def get_top_post_urls(n: int = 3) -> list[str]:
     with _connect() as conn:
         eng = _engagement_expr("m")
@@ -425,7 +471,7 @@ def _get_sheets_service():
         return None
 
 
-def write_to_google_sheets(summary: dict, slots: list[dict]) -> str | None:
+def write_to_google_sheets(summary: dict) -> str | None:
     sheet_id = os.environ.get("GOOGLE_SHEET_ID", "")
     if not sheet_id:
         return None
@@ -436,23 +482,6 @@ def write_to_google_sheets(summary: dict, slots: list[dict]) -> str | None:
 
     try:
         sheets = service.spreadsheets()
-
-        plan_rows = [["Day", "Date", "Topic", "Format", "Status"]]
-        for slot in slots:
-            topic = slot.get("topic") or {}
-            plan_rows.append([
-                slot.get("day", ""),
-                slot.get("date", ""),
-                topic.get("title", ""),
-                slot.get("format", ""),
-                slot.get("status", "pending"),
-            ])
-        sheets.values().update(
-            spreadsheetId=sheet_id,
-            range="Plan!A1",
-            valueInputOption="RAW",
-            body={"values": plan_rows},
-        ).execute()
 
         perf_rows = [
             ["Metric", "Value"],

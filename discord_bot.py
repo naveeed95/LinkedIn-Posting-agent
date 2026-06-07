@@ -8,7 +8,6 @@ Required env vars:
   DISCORD_COMMENTS_CHANNEL_ID
   DISCORD_POSTED_CHANNEL_ID
   DISCORD_ANALYTICS_CHANNEL_ID
-  DISCORD_PLAN_CHANNEL_ID
 
 Exports:
   send_approval_message(variants, scores, topic, day)         -> str | None (message_id)
@@ -17,7 +16,6 @@ Exports:
   send_comment_approval(comment_author, comment_text, suggested_reply) -> None
   send_analytics_report(report_data)                         -> None
   send_rules_update(changes)                                 -> None
-  send_weekly_plan(slots, strategy, scores)                  -> None
 '''
 
 import os
@@ -282,81 +280,6 @@ def wait_for_approval(
     return {"action": "timeout"}
 
 
-def send_design_approval_message(
-    variants: list[dict],
-    topic: dict,
-    day: str,
-) -> str | None:
-    """Send a carousel approval showing each model's structured slide content."""
-    date_str = datetime.now().strftime("%A %d %B %Y")
-    divider  = "━" * 40
-
-    if not variants:
-        _send_message(
-            _channel("DISCORD_APPROVALS_CHANNEL_ID"),
-            f"⚠️ No carousel variants generated for {day} {date_str}. Logging as missed.",
-        )
-        return None
-
-    sections: list[str] = []
-    for i, v in enumerate(variants, 1):
-        c = v["content"]
-        headline    = c.get("slide1", {}).get("headline", "")
-        subheadline = c.get("slide1", {}).get("subheadline", "")
-        stats       = c.get("slide2", {}).get("stats", [])
-        impacts     = c.get("slide3", {}).get("impacts", [])
-        steps       = c.get("slide4", {}).get("steps", [])
-        takeaway    = c.get("slide5", {}).get("takeaway", "")
-        caption     = c.get("caption", "")
-        cap_preview = caption[:300] + ("..." if len(caption) > 300 else "")
-
-        stats_text   = " | ".join(f"{s.get('stat', '')}" for s in stats[:3])
-        impacts_text = " | ".join(imp.get('title', '') for imp in impacts[:3])
-        steps_text   = " | ".join(s.get('action', '') for s in steps[:3])
-
-        sections.append(
-            f"{divider}\n"
-            f"**[{i}] {v['display_name']}**\n"
-            f"**HOOK:** {headline}\n"
-            f"_{subheadline}_\n\n"
-            f"**STATS:** {stats_text}\n"
-            f"**IMPACTS:** {impacts_text}\n"
-            f"**STEPS:** {steps_text}\n\n"
-            f"**TAKEAWAY:** {takeaway}\n\n"
-            f"**CAPTION:** {cap_preview}"
-        )
-
-    single = len(variants) == 1
-    if single:
-        instructions = (
-            "**Reply with:**\n"
-            "✅ `yes` — approve and post this carousel\n"
-            "🔄 `r [hint]` — regenerate (e.g. `r add more stats`)\n"
-            "❌ `skip` — skip today (logged as missed)"
-        )
-    else:
-        instructions = "**Reply with:**\n"
-        for i, v in enumerate(variants, 1):
-            instructions += f"✅ `{i}` — post {v['display_name']}'s carousel\n"
-        instructions += (
-            "🔄 `r [hint]` — regenerate all (e.g. `r add more stats`)\n"
-            "❌ `skip` — skip today (logged as missed)"
-        )
-
-    header = (
-        f"📄 **THE TECH TUTORS — Carousel Post** | {day} {date_str}\n"
-        f"**Topic:** {topic.get('title', '')}\n"
-    )
-
-    content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}\n\n" + instructions
-
-    channel_id = _channel("DISCORD_APPROVALS_CHANNEL_ID")
-    msg_id = _send_long_message(channel_id, content)
-    if msg_id:
-        log.info(f"Carousel approval sent with {len(variants)} variants (id: {msg_id}). Waiting for reply...")
-    return msg_id
-
-
 def send_posted_confirmation(post_url: str, variant_used: int, post_text: str) -> None:
     channel_id = _channel("DISCORD_POSTED_CHANNEL_ID")
     preview = post_text[:200] + "..." if len(post_text) > 200 else post_text
@@ -493,71 +416,6 @@ Rules cache refreshed. Next post will use updated rules."""
     _send_message(channel_id, content[:2000])
 
 
-def send_weekly_plan(
-    slots: list[dict],
-    strategy: dict | None = None,
-    scores: dict[int, int] | None = None,
-) -> str | None:
-    """Send the full week's content plan to the planning channel."""
-    channel_id = _channel("DISCORD_PLAN_CHANNEL_ID") or _channel("DISCORD_APPROVALS_CHANNEL_ID")
-    if not channel_id:
-        log.info("No plan or approvals channel configured — weekly plan not sent.")
-        return None
-
-    week_start = slots[0]["date"] if slots else datetime.now().strftime("%Y-%m-%d")
-    divider = "━" * 40
-    scores  = scores or {}
-
-    strategy_block = ""
-    if strategy:
-        keywords = ", ".join(strategy.get("focus_keywords", [])) or "—"
-        pillar   = strategy.get("content_pillar", "")
-        strategy_block = (
-            f"**Weekly Strategy**\n"
-            f"  • Domain:         {strategy.get('domain', '—')}\n"
-            f"  • Content pillar: {pillar}\n"
-            f"  • Focus keywords: {keywords}\n"
-            f"  • Posting time:   {strategy.get('posting_time', '—')}\n"
-            f"  • Rationale:      {strategy.get('rationale', '—')}\n\n"
-        )
-
-    day_blocks: list[str] = []
-    for i, slot in enumerate(slots):
-        topic = slot.get("topic") or {}
-        title = topic.get("title", "— not planned —")
-        angle = topic.get("angle", "")
-        url   = topic.get("source_url", "")
-        why   = topic.get("why", "")
-        score = scores.get(i, "—")
-        fmt   = slot.get("format") or "text"
-        block = (
-            f"{divider}\n"
-            f"**{slot['day']} — {slot['date']}**  `[{fmt}]`  score: {score}\n"
-            f"**Topic:** {title}\n"
-        )
-        if angle:
-            block += f"**Angle:** {angle}\n"
-        if why:
-            block += f"**Why this day:** {why}\n"
-        if url:
-            block += f"**Source:** {url}\n"
-        day_blocks.append(block)
-
-    num_slots = len(slots)
-    header = (
-        f"**THE TECH TUTORS — Week Plan** | {week_start}\n"
-        f"_{num_slots} posts queued Mon–Sun. Approval message fires each day at posting time._\n\n"
-    )
-
-    content = header + strategy_block + "\n".join(day_blocks) + f"\n{divider}\n"
-    content += "_Daily approval: reply `yes` to post · `r [hint]` to regenerate · `edit: [text]` for custom · `skip` to skip_"
-
-    msg_id = _send_long_message(channel_id, content)
-    if msg_id:
-        log.info(f"Weekly plan sent to plan channel (id: {msg_id}).")
-    return msg_id
-
-
 def notify_timeout(day: str, date_str: str) -> None:
     _send_message(
         _channel("DISCORD_APPROVALS_CHANNEL_ID"),
@@ -584,20 +442,16 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if "--send-report" in args:
         from analytics_tracker import get_performance_summary, write_to_google_sheets
-        from scheduler import get_week_overview
         summary = get_performance_summary()
-        slots = get_week_overview()
-        sheet_url = write_to_google_sheets(summary, slots)
+        sheet_url = write_to_google_sheets(summary)
         if sheet_url:
             summary["sheet_url"] = sheet_url
         send_analytics_report(summary)
         print("Analytics report sent to Discord.")
     elif "--send-weekly-report" in args:
         from analytics_tracker import get_performance_summary, write_to_google_sheets
-        from scheduler import get_week_overview
         summary = get_performance_summary()
-        slots = get_week_overview()
-        sheet_url = write_to_google_sheets(summary, slots)
+        sheet_url = write_to_google_sheets(summary)
         if sheet_url:
             summary["sheet_url"] = sheet_url
         send_analytics_report(summary)

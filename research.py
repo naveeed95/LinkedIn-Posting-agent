@@ -575,8 +575,15 @@ def fetch_trending_topics(
     top_post_urls: list[str] | None = None,
     domain: str = "",
     focus_keywords: list[str] | None = None,
+    recent_topics: list[dict] | None = None,
 ) -> list[dict]:
-    """Fetch, deduplicate, and rank topics from all sources."""
+    """Fetch, deduplicate, and rank topics from all sources.
+
+    `recent_topics` (from analytics_tracker.get_recent_topic_texts) applies a
+    decaying semantic-similarity penalty so a multi-day news cycle (e.g. one
+    company's valuation story) doesn't dominate the ranking for a week straight —
+    see topic_similarity.apply_dedup_penalty.
+    """
     topics: list[dict] = []
 
     print("  Fetching RSS feeds (newsletters + tech publications)...")
@@ -632,6 +639,11 @@ def fetch_trending_topics(
         kw_bonus     = 40  if any(kw.lower() in text for kw in kw_list) else 0
         virality     = int(math.log2(t.get("points", 0) + 1) * 3)  # max ~45 for 20k pts
         t["_score"]  = smb_bonus + domain_bonus + kw_bonus + virality
+
+    if recent_topics:
+        from topic_similarity import apply_dedup_penalty
+
+        apply_dedup_penalty(unique, recent_topics)
 
     unique.sort(key=lambda x: x.get("_score", 0), reverse=True)
 

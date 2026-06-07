@@ -24,7 +24,13 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     from content_generator import engagement_scorer, generate_text_post_variants, pick_daily_topic
     from research import fetch_trending_topics, fetch_deep_topic_research
     from linkedin_poster import post_first_comment, post_to_linkedin
-    from analytics_tracker import get_performance_summary, get_top_hashtags, get_topic_history, log_post
+    from analytics_tracker import (
+        get_performance_summary,
+        get_recent_topic_texts,
+        get_top_hashtags,
+        get_topic_history,
+        log_post,
+    )
     from discord_bot import (
         notify_auto_post,
         notify_timeout,
@@ -56,12 +62,20 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         except Exception as e:
             _log("WARNING", f"Dedup check failed: {e}")
 
-        # Recent topics for repetition avoidance (last 30 days)
+        # Recent topics for repetition avoidance (last 30 days, LLM avoid-list)
         recent_titles: list[str] = []
         try:
             recent_titles = get_topic_history(days=30)
         except Exception as e:
             _log("WARNING", f"Could not fetch recent topics: {e}")
+
+        # Recent topic texts for semantic-similarity dedup penalty (last 10 days,
+        # decaying — catches "same story, reworded headline" that title-matching misses)
+        recent_topic_texts: list[dict] = []
+        try:
+            recent_topic_texts = get_recent_topic_texts(days=10)
+        except Exception as e:
+            _log("WARNING", f"Could not fetch recent topic texts for dedup scoring: {e}")
 
         _log("INFO", "Fetching trending topics from all sources...")
         try:
@@ -71,7 +85,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         except Exception:
             top_urls = []
 
-        topics = fetch_trending_topics(top_post_urls=top_urls or None)
+        topics = fetch_trending_topics(top_post_urls=top_urls or None, recent_topics=recent_topic_texts or None)
         if not topics:
             return {"status": "no_topics", "message": "No topics found from research sources"}
 
@@ -225,6 +239,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                     "post_urn": result["urn"],
                     "post_text": post_text,
                     "topic_title": topic.get("title", ""),
+                    "topic_angle": topic.get("angle", ""),
                     "day_of_week": day,
                     "posted_at": datetime.now().isoformat(),
                     "variant_chosen": 1,
