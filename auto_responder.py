@@ -75,28 +75,8 @@ def _li_headers() -> dict:
 
 
 def fetch_recent_post_urns(days: int = 7) -> list[str]:
-    schedule_file = Path(__file__).parent / "weekly_schedule.json"
-    if not schedule_file.exists():
-        return []
-
-    cutoff = (date.today() - timedelta(days=days)).isoformat()
-    urns = []
-
-    with open(schedule_file, encoding="utf-8") as f:
-        schedule = json.load(f)
-
-    for week_slots in schedule.values():
-        if not isinstance(week_slots, list):
-            continue
-        for slot in week_slots:
-            if (
-                slot.get("status") == "posted"
-                and slot.get("post_urn")
-                and slot.get("date", "") >= cutoff
-            ):
-                urns.append(slot["post_urn"])
-
-    return urns
+    from analytics_tracker import get_recent_post_urns
+    return get_recent_post_urns(days=days)
 
 
 def fetch_comments(post_urn: str) -> list[dict]:
@@ -175,7 +155,7 @@ def _save_seen_urns(urns: set[str]) -> None:
 def fetch_unanswered_comments() -> list[dict]:
     post_urns = fetch_recent_post_urns(days=7)
     if not post_urns:
-        log.info("No recent posts found in weekly_schedule.json.")
+        log.info("No recent posts found in performance.db.")
         return []
 
     seen_urns = _load_seen_urns()

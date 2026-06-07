@@ -79,6 +79,13 @@ def setup_logging(level: str | int | None = None) -> None:
     root = logging.getLogger()
     root.setLevel(lvl)
 
+    # Windows consoles default stdout to cp1252 — emoji in research titles
+    # (RSS/Reddit/HN headlines) raise UnicodeEncodeError on log emit otherwise.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # non-reconfigurable stream (e.g. piped/captured in some test runners)
+
     handler = logging.StreamHandler(sys.stdout)
     fmt = os.environ.get("LOG_FORMAT", "text").lower()
     handler.setFormatter(JSONFormatter() if fmt == "json" else TextFormatter())

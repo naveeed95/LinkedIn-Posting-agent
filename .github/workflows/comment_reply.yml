@@ -26,10 +26,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download schedule
+      - name: Download performance DB
         uses: actions/download-artifact@v4
         with:
-          name: weekly-schedule
+          name: performance-db
           path: .
         continue-on-error: true
 
