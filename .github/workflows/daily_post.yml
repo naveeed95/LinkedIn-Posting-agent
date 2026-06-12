@@ -18,6 +18,9 @@ on:
         type: choice
         options: ['false', 'true']
 
+permissions:
+  contents: write
+
 concurrency:
   group: posting-agent-db
   cancel-in-progress: false
@@ -53,15 +56,20 @@ jobs:
           restore-keys: |
             performance-db-
 
+      - name: Get date
+        id: date
+        run: echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
       - name: Prepare cache directory
         run: mkdir -p cache
 
-      - name: Download LinkedIn rules cache
-        uses: actions/download-artifact@v4
+      - name: Restore LinkedIn rules cache
+        uses: actions/cache@v4
         with:
-          name: linkedin-rules
-          path: cache/
-        continue-on-error: true
+          path: cache/linkedin_rules.json
+          key: linkedin-rules-${{ steps.date.outputs.date }}
+          restore-keys: |
+            linkedin-rules-
 
       - name: Skip if already posted today
         id: dedup
@@ -115,14 +123,22 @@ jobs:
             python run.py
           fi
 
-      - name: Upload LinkedIn rules cache
-        uses: actions/upload-artifact@v4
+      - name: Commit posted-topics log
         if: always()
-        with:
-          name: linkedin-rules
-          path: cache/linkedin_rules.json
-          retention-days: 7
-        continue-on-error: true
+        run: |
+          if [ -n "$(git status --porcelain data/posted_topics.json 2>/dev/null)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/posted_topics.json
+            git commit -m "chore: record posted topic [skip ci]"
+            for i in 1 2 3; do
+              git pull --rebase origin "${{ github.ref_name }}" && git push && break
+              echo "Push attempt $i failed — retrying..."
+              sleep 5
+            done
+          else
+            echo "No changes to data/posted_topics.json — skipping commit."
+          fi
 
       - name: Notify Discord on failure
         if: failure()

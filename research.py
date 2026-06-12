@@ -576,13 +576,20 @@ def fetch_trending_topics(
     domain: str = "",
     focus_keywords: list[str] | None = None,
     recent_topics: list[dict] | None = None,
+    all_posted_titles: set[str] | None = None,
 ) -> list[dict]:
     """Fetch, deduplicate, and rank topics from all sources.
 
-    `recent_topics` (from analytics_tracker.get_recent_topic_texts) applies a
-    decaying semantic-similarity penalty so a multi-day news cycle (e.g. one
-    company's valuation story) doesn't dominate the ranking for a week straight —
-    see topic_similarity.apply_dedup_penalty.
+    `recent_topics` (from topic_log.get_recent_topic_texts) applies a decaying
+    semantic-similarity penalty so a multi-day news cycle (e.g. one company's
+    valuation story) doesn't dominate the ranking for a week straight — see
+    topic_similarity.apply_dedup_penalty.
+
+    `all_posted_titles` (from topic_log.get_all_titles), if given, hard-excludes
+    any topic ever posted before (exact title match, all-time) plus any topic
+    that's a near-duplicate of a post within the last 30 days — see
+    topic_similarity.filter_hard_duplicates. This is a structural guarantee,
+    not just a scoring penalty.
     """
     topics: list[dict] = []
 
@@ -639,6 +646,11 @@ def fetch_trending_topics(
         kw_bonus     = 40  if any(kw.lower() in text for kw in kw_list) else 0
         virality     = int(math.log2(t.get("points", 0) + 1) * 3)  # max ~45 for 20k pts
         t["_score"]  = smb_bonus + domain_bonus + kw_bonus + virality
+
+    if all_posted_titles:
+        from topic_similarity import filter_hard_duplicates
+
+        unique = filter_hard_duplicates(unique, all_posted_titles, recent_topics or [])
 
     if recent_topics:
         from topic_similarity import apply_dedup_penalty

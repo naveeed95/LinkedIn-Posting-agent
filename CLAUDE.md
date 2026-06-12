@@ -46,7 +46,8 @@ linkedin_rules_fetcher.py  # LinkedIn algorithm rules via Tavily search (24h TTL
 analytics_tracker.py       # SQLite schema, log_post, poll_metrics, summary, Sheets export
 discord_bot.py             # HTTP API: approval messages, polling for replies, reports
 auto_responder.py          # LinkedIn comment reply suggestions → Discord queue
-topic_similarity.py        # MiniLM embedding dedup penalty for daily topic selection
+topic_similarity.py        # MiniLM embedding dedup: soft penalty, hard topic filter, post-content dup check
+topic_log.py               # Permanent, git-committed log of posted topics/post text (data/posted_topics.json)
 test_llm.py                # Smoke test for Groq models
 .github/workflows/
   daily_post.yml           # Cron: 0 8 * * * (1pm PKT daily) → python run.py
@@ -56,6 +57,7 @@ test_llm.py                # Smoke test for Groq models
   rules_update.yml         # Refresh LinkedIn rules cache
   token_refresh.yml        # Rotate LinkedIn access token monthly
 performance.db             # SQLite: posts, metrics, topics_history, hashtag_metrics
+data/posted_topics.json    # Permanent dedup log — committed to git, never reset (see topic_log.py)
 cache/linkedin_rules.json  # Algorithm rules cache (24h TTL, Tavily-fetched)
 output/                    # Generated PDFs / PNGs (gitignored)
 ```
@@ -100,6 +102,17 @@ output/                    # Generated PDFs / PNGs (gitignored)
 ### No weekly plan — daily research at write-time
 
 There is **no pre-planning step and no `weekly_schedule.json`**. Every day, `agent_runner.run_agent()` researches and picks a fresh topic itself (`pick_daily_topic` in `content_generator.py`, guided by `topic_similarity.apply_dedup_penalty` to avoid repeating recent themes by semantic similarity to recently-posted topics). This replaced an older weekly-pre-plan flow (`run.py plan` / `scheduler.py` / `weekly_schedule.json`) that has been fully removed — don't reintroduce slot-based scheduling, `DAY_FORMAT`/`DAY_STRATEGY` constants, or per-day pre-assignment.
+
+### Permanent topic-dedup (hard guarantee)
+
+`performance.db` and `cache/*.json` live in CI cache and can be evicted or cold-start empty — never a reliable dedup source on their own. `data/posted_topics.json` (via `topic_log.py`) is **committed to git after every successful publish** and is the permanent source of truth:
+
+- `tool_pick_daily_topic()` fetches `topic_log.get_all_titles()` (all-time, normalized) and passes it to `fetch_trending_topics(all_posted_titles=...)`, which calls `topic_similarity.filter_hard_duplicates()` to **structurally remove** any topic ever posted before — and any topic semantically ≥0.80 similar to a post from the last 30 days — before the LLM even sees the candidate list. A topic can never be picked twice.
+- `topic_log.get_recent_topic_texts(days=30)` feeds `apply_dedup_penalty` (soft scoring penalty) same as before.
+- `tool_score_post()` additionally calls `topic_similarity.is_duplicate_post()` against `topic_log.get_recent_post_texts(days=7)` — if the *generated post body* is ≥0.85 similar to anything published in the last week (even on a different topic/angle), it's scored as `ready_to_send: False` and the agent regenerates with a "make this distinctly different" hint.
+- `tool_publish_post()` calls `topic_log.record_posted_topic(title, topic_text, source_url, post_text)` on every successful publish. `daily_post.yml` commits and pushes `data/posted_topics.json` at the end of the run (`permissions: contents: write`).
+
+Don't bypass `topic_log` for dedup — `performance.db`-based history (`get_topic_history`, `get_recent_topic_texts` in `analytics_tracker.py`) is no longer used for this purpose because it's not durable.
 
 ### Daily post flow (`python run.py`)
 
@@ -150,15 +163,16 @@ Every post variant runs through `_fix_post_quality` — Llama 70B pass that stri
 | `rules_update.yml` | Weekly | — | Refresh LinkedIn rules cache |
 | `token_refresh.yml` | Monthly | — | Rotate LinkedIn access token |
 
-Artifact persistence:
-- `performance-db` — SQLite analytics DB (90-day retention)
-- `linkedin-rules` — algorithm rules cache (1-day retention)
+Persistence (via `actions/cache@v4`, not artifacts — artifacts are run-scoped in v4 and can't be restored cross-run):
+- `performance.db` — `performance-db-${{ github.run_id }}` key, `performance-db-` restore-keys prefix.
+- `cache/linkedin_rules.json` — `linkedin-rules-<date>` key, `linkedin-rules-` restore-keys prefix (24h TTL enforced by `linkedin_rules_fetcher.py`, not the cache key).
+- `data/posted_topics.json` — committed directly to git by `daily_post.yml` after publish (see "Permanent topic-dedup" above), not cached.
 
 Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all workflows that touch the DB.
 
 ## Known production gotchas
 
-1. **`performance.db` lives in artifacts** — 90-day retention, no external backup. Failed upload loses analytics history.
+1. **`performance.db` lives in CI cache** — subject to eviction (7-day idle, 10GB repo cap). It's a secondary signal only; permanent topic-dedup relies on `data/posted_topics.json`, not this DB.
 2. **Hacker News** — three-tier fetch (keyword+date → top-stories-by-points → no-date fallback) in `fetch_hacker_news`. Browser-like UA in `HEADERS` since Algolia rejects niche User-Agents.
 3. **Discord 2000-char split** — `_send_long_message` splits at `━━━` dividers then newlines. No automated test covers boundary cases.
 4. **Artifact race** — concurrency group prevents parallel runs but a cancelled mid-upload can corrupt state between runs.
@@ -175,7 +189,7 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 
 - Don't post to a personal LinkedIn URN. `_author_urn()` enforces org-only.
 - Don't add `cerebras-llama` or `OPENROUTER_API_KEY` paths — not in `MODELS`, will raise `KeyError`.
-- Don't commit `.env`, `performance.db`, `cache/*.json`, or `output/`.
+- Don't commit `.env`, `performance.db`, `cache/*.json`, or `output/`. (`data/posted_topics.json` IS committed — that's the permanent dedup log, see "Permanent topic-dedup".)
 - Don't skip `_fix_post_quality`. Banned words leak into LinkedIn and cause algorithm penalty.
 - Don't run `linkedin_auth.py` in CI — interactive browser flow only.
 - Don't reintroduce weekly pre-planning, `weekly_schedule.json`, slot-based scheduling, or `DAY_FORMAT`/`DAY_STRATEGY` constants — topic + format are decided dynamically by the LLM at write-time, daily.

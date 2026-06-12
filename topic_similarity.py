@@ -12,6 +12,8 @@ nothing touches the system/user profile directories.
 
 Exports:
   apply_dedup_penalty(topics, recent, max_penalty, window_days) -> None  (mutates topics in place)
+  filter_hard_duplicates(topics, all_titles, recent, similarity_threshold, hard_window_days) -> list[dict]
+  is_duplicate_post(post_text, recent_post_texts, similarity_threshold) -> tuple[bool, float]
 """
 
 import os
@@ -101,3 +103,96 @@ def apply_dedup_penalty(
 
     if flagged:
         log.info(f"Dedup penalty flagged {flagged} near-duplicate topic(s) of recent posts")
+
+
+def filter_hard_duplicates(
+    topics: list[dict],
+    all_titles: set[str],
+    recent: list[dict],
+    similarity_threshold: float = 0.80,
+    hard_window_days: int = 30,
+) -> list[dict]:
+    """Hard-exclude topics that have already been posted — never let the LLM
+    even see them, so a repeat is structurally impossible (not just penalized).
+
+    Two checks, applied to a NEW list (does not mutate `topics`):
+    1. Exact title match (normalized) against `all_titles` (all-time, from
+       topic_log.get_all_titles()) — excluded regardless of age.
+    2. Semantic similarity >= `similarity_threshold` against any topic posted
+       within `hard_window_days` (from `recent`, e.g.
+       topic_log.get_recent_topic_texts()) — catches "same story, reworded
+       headline" within the window.
+    """
+    if not topics:
+        return topics
+
+    kept = [t for t in topics if t["title"].strip().lower() not in all_titles]
+    removed_exact = len(topics) - len(kept)
+
+    recent_window = [r for r in recent if r["days_ago"] <= hard_window_days]
+    if not recent_window or not kept:
+        if removed_exact:
+            log.info(f"Hard-filtered {removed_exact} exact-repeat topic(s) of past posts")
+        return kept
+
+    try:
+        model = _model()
+    except Exception as e:
+        log.warning(f"Hard dedup filter (semantic) skipped: {e}")
+        if removed_exact:
+            log.info(f"Hard-filtered {removed_exact} exact-repeat topic(s) of past posts")
+        return kept
+
+    try:
+        cand_texts = [f"{t['title']} — {t.get('description', '')}" for t in kept]
+        recent_texts = [r["text"] for r in recent_window]
+        cand_emb = model.encode(cand_texts, normalize_embeddings=True)
+        recent_emb = model.encode(recent_texts, normalize_embeddings=True)
+        sims = cand_emb @ recent_emb.T
+        worst = sims.max(axis=1)
+    except Exception as e:
+        log.warning(f"Hard dedup filter (semantic) skipped: {e}")
+        if removed_exact:
+            log.info(f"Hard-filtered {removed_exact} exact-repeat topic(s) of past posts")
+        return kept
+
+    final = [t for t, w in zip(kept, worst) if w < similarity_threshold]
+    removed_semantic = len(kept) - len(final)
+    if removed_exact or removed_semantic:
+        log.info(
+            f"Hard-filtered {removed_exact} exact-repeat + {removed_semantic} "
+            f"near-duplicate topic(s) of posts within {hard_window_days}d"
+        )
+    return final
+
+
+def is_duplicate_post(
+    post_text: str,
+    recent_post_texts: list[str],
+    similarity_threshold: float = 0.85,
+) -> tuple[bool, float]:
+    """Check a freshly-generated post body against the full text of posts
+    published in the last N days (e.g. topic_log.get_recent_post_texts(days=7)).
+
+    Catches wording/structure repeats that slip through topic-level dedup —
+    e.g. the same hook + CTA reused on a different topic. Returns
+    (is_duplicate, best_similarity). Fails open (False, 0.0) if the model or
+    embeddings are unavailable.
+    """
+    if not post_text or not recent_post_texts:
+        return False, 0.0
+
+    try:
+        model = _model()
+        cand_emb = model.encode([post_text], normalize_embeddings=True)
+        recent_emb = model.encode(recent_post_texts, normalize_embeddings=True)
+        sims = cand_emb @ recent_emb.T
+        best = float(sims.max())
+    except Exception as e:
+        log.warning(f"Post-content dedup check skipped: {e}")
+        return False, 0.0
+
+    is_dup = best >= similarity_threshold
+    if is_dup:
+        log.info(f"Post flagged as near-duplicate of a post from the last week (similarity={best:.2f})")
+    return is_dup, best

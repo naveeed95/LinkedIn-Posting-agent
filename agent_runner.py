@@ -21,14 +21,13 @@ def _log(level: str, msg: str) -> None:
 def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     """Direct posting pipeline. Called from cmd_auto() in run.py."""
 
+    import topic_log
     from content_generator import engagement_scorer, generate_text_post_variants, pick_daily_topic
     from research import fetch_trending_topics, fetch_deep_topic_research
     from linkedin_poster import post_first_comment, post_to_linkedin
     from analytics_tracker import (
         get_performance_summary,
-        get_recent_topic_texts,
         get_top_hashtags,
-        get_topic_history,
         log_post,
     )
     from discord_bot import (
@@ -47,6 +46,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         "topic": None,
         "topic_pool": [],
         "recent_titles": [],
+        "recent_post_texts": [],
         "tried_titles": set(),
         "topic_switches": 0,
         "day": today.strftime("%A"),
@@ -60,10 +60,10 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
     def tool_pick_daily_topic() -> dict:
         """Research trending topics and pick the best one for today."""
-        # Dedup: skip if already posted today (checked via analytics DB)
+        # Dedup: skip if already posted today (permanent, git-committed log —
+        # survives cache eviction unlike the analytics DB)
         try:
-            today_topics = get_topic_history(days=1)
-            if today_topics:
+            if topic_log.was_posted_today():
                 return {"status": "already_posted", "date": state["date"]}
         except Exception as e:
             _log("WARNING", f"Dedup check failed: {e}")
@@ -71,17 +71,33 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         # Recent topics for repetition avoidance (last 30 days, LLM avoid-list)
         recent_titles: list[str] = []
         try:
-            recent_titles = get_topic_history(days=30)
+            recent_titles = topic_log.get_recent_titles(days=30)
         except Exception as e:
             _log("WARNING", f"Could not fetch recent topics: {e}")
 
-        # Recent topic texts for semantic-similarity dedup penalty (last 10 days,
+        # Recent topic texts for semantic-similarity dedup penalty (last 30 days,
         # decaying — catches "same story, reworded headline" that title-matching misses)
         recent_topic_texts: list[dict] = []
         try:
-            recent_topic_texts = get_recent_topic_texts(days=10)
+            recent_topic_texts = topic_log.get_recent_topic_texts(days=30)
         except Exception as e:
             _log("WARNING", f"Could not fetch recent topic texts for dedup scoring: {e}")
+
+        # All-time set of posted titles — hard-excludes exact repeats regardless
+        # of age, so a topic can NEVER be picked twice.
+        all_posted_titles: set[str] = set()
+        try:
+            all_posted_titles = topic_log.get_all_titles()
+        except Exception as e:
+            _log("WARNING", f"Could not fetch all posted titles: {e}")
+
+        # Full text of last week's posts — checked against the generated post
+        # body in tool_score_post to catch wording/structure repeats.
+        try:
+            state["recent_post_texts"] = topic_log.get_recent_post_texts(days=7)
+        except Exception as e:
+            _log("WARNING", f"Could not fetch recent post texts: {e}")
+            state["recent_post_texts"] = []
 
         _log("INFO", "Fetching trending topics from all sources...")
         try:
@@ -91,7 +107,11 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         except Exception:
             top_urls = []
 
-        topics = fetch_trending_topics(top_post_urls=top_urls or None, recent_topics=recent_topic_texts or None)
+        topics = fetch_trending_topics(
+            top_post_urls=top_urls or None,
+            recent_topics=recent_topic_texts or None,
+            all_posted_titles=all_posted_titles or None,
+        )
         if not topics:
             return {"status": "no_topics", "message": "No topics found from research sources"}
 
@@ -232,6 +252,27 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         advice = result.get("advice", "")
         recent_avg = past.get("recent_avg_score", 0)
         threshold = max(55, min(75, round(recent_avg * 0.9))) if recent_avg > 0 else 62
+
+        # Hard check: does this post read like one from the last 7 days?
+        # Catches wording/structure repeats that topic-level dedup misses.
+        try:
+            from topic_similarity import is_duplicate_post
+
+            is_dup, sim = is_duplicate_post(post_text, state.get("recent_post_texts", []))
+        except Exception:
+            is_dup, sim = False, 0.0
+
+        if is_dup:
+            return {
+                "score": score,
+                "threshold": threshold,
+                "verdict": "duplicate",
+                "ready_to_send": False,
+                "advice": "This post is too similar to one published in the last 7 days "
+                          f"(similarity {sim:.2f}). Rewrite with a different hook, structure, "
+                          "and examples.",
+            }
+
         return {
             "score": score,
             "threshold": threshold,
@@ -319,6 +360,18 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                 })
             except Exception as e:
                 log_agent.warning(f"Analytics log failed: {e}")
+
+            try:
+                title = topic.get("title", "")
+                angle = topic.get("angle", "")
+                topic_log.record_posted_topic(
+                    title=title,
+                    topic_text=f"{title} — {angle}" if angle else title,
+                    source_url=topic.get("source_url", ""),
+                    post_text=post_text,
+                )
+            except Exception as e:
+                log_agent.warning(f"Permanent topic log failed: {e}")
 
             source_url = topic.get("source_url", "")
             landing = os.environ.get("LANDING_PAGE_URL", "")
