@@ -177,6 +177,7 @@ def send_approval_message(
             "**Reply with:**\n"
             "✅ `yes` — approve and post this\n"
             "🔄 `r [hint]` — regenerate (e.g. `r make it punchier`)\n"
+            "🆕 `new topic [hint]` — scrap this topic, pick a different one (e.g. `new topic: focus on automation`)\n"
             "✏️ `edit: [your text]` — post your own version instead\n"
             "❌ `skip` — skip today (logged as missed)"
         )
@@ -186,6 +187,7 @@ def send_approval_message(
             instructions += f"✅ `{i}` — post {v['display_name']}'s version\n"
         instructions += (
             "🔄 `r [hint]` — regenerate all (e.g. `r make them punchier`)\n"
+            "🆕 `new topic [hint]` — scrap this topic, pick a different one\n"
             "✏️ `edit: [your text]` — post your own version instead\n"
             "❌ `skip` — skip today (logged as missed)"
         )
@@ -216,6 +218,7 @@ def wait_for_approval(
       {"action": "post",       "variant_index": int}    # 0-based
       {"action": "edit",       "text": str}
       {"action": "regenerate", "hint": str}
+      {"action": "new_topic",  "hint": str}
       {"action": "skip"}
       {"action": "timeout"}
     """
@@ -263,6 +266,10 @@ def wait_for_approval(
 
             if text_lower.startswith("r ") and len(text) > 2:
                 return {"action": "regenerate", "hint": text[2:].strip()}
+
+            if text_lower.startswith("new topic"):
+                hint = text[len("new topic"):].strip().lstrip(":").strip()
+                return {"action": "new_topic", "hint": hint}
 
             if text_lower.startswith("edit:"):
                 custom_text = text[5:].strip()

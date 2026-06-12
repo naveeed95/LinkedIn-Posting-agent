@@ -117,6 +117,7 @@ agent_runner.run_agent()  ← Groq Llama 3.3 70B tool-use loop
 Discord approval commands (reply in #approvals channel):
 - `1` — post the variant
 - `r make it punchier` — regenerate with hint (max 3 attempts)
+- `new topic` / `new topic: focus on automation` — scrap current topic, pick a different one from today's research pool and regenerate (max 1 switch per run — second wait is 60min, not 120min)
 - `edit: [full post text]` — post custom text verbatim
 - `skip` — log slot as skipped
 

@@ -322,8 +322,12 @@ Return ONLY valid JSON, nothing else:
     return _rule_based_score(variant, past_performance)
 
 
-def pick_daily_topic(topics: list[dict], recent_titles: list[str] | None = None) -> dict:
-    """Pick today's best topic from trending sources using LLM, avoiding recent repeats."""
+def pick_daily_topic(topics: list[dict], recent_titles: list[str] | None = None, steer_hint: str = "") -> dict:
+    """Pick today's best topic from trending sources using LLM, avoiding recent repeats.
+
+    `steer_hint` lets the caller (e.g. a "new topic" request from Discord) nudge the
+    pick toward a different direction — appended as extra guidance in the prompt.
+    """
     topics_text = "\n".join(
         f"{i+1}. [{t['source']}] {t['title']} — {t.get('description', '')[:150]} ({t.get('url', '')})"
         for i, t in enumerate(topics[:25])
@@ -335,6 +339,8 @@ def pick_daily_topic(topics: list[dict], recent_titles: list[str] | None = None)
             f"- {t}" for t in recent_titles[:15]
         )
 
+    steer_block = f"\nUSER STEERING — pick something matching this direction: {steer_hint}\n" if steer_hint else ""
+
     today = _date.today()
     day_name = today.strftime("%A")
 
@@ -343,7 +349,7 @@ def pick_daily_topic(topics: list[dict], recent_titles: list[str] | None = None)
 TODAY: {today.isoformat()} ({day_name})
 AUDIENCE: SMB owners (1–50 employees), 30–55, pressed for time, skeptical of hype.
 GOAL: Pick ONE topic that will resonate most with SMB owners today — specific, timely, actionable.
-{avoid_block}
+{avoid_block}{steer_block}
 
 TRENDING TOPICS (sorted by SMB relevance score):
 {topics_text}

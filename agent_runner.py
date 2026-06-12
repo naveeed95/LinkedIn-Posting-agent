@@ -41,8 +41,14 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
     today = date.fromisoformat(target_date) if target_date else date.today()
 
+    MAX_TOPIC_SWITCHES = 1  # how many times "new topic" can be requested per run
+
     state: dict = {
         "topic": None,
+        "topic_pool": [],
+        "recent_titles": [],
+        "tried_titles": set(),
+        "topic_switches": 0,
         "day": today.strftime("%A"),
         "date": today.isoformat(),
         "previous_posts": [],
@@ -105,6 +111,9 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             }
 
         state["topic"] = topic
+        state["topic_pool"] = topics[:30]
+        state["recent_titles"] = recent_titles
+        state["tried_titles"] = {topic.get("title", "")}
         return {
             "status": "ok",
             "day": state["day"],
@@ -112,6 +121,40 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             "topic_title": topic.get("title", ""),
             "angle": topic.get("angle", ""),
             "format": topic.get("format", "text"),
+        }
+
+    def tool_pick_new_topic(hint: str = "") -> dict:
+        """Re-pick a different topic from today's already-fetched pool (used for
+        the Discord 'new topic' request — avoids re-running research from scratch)."""
+        pool = state.get("topic_pool", [])
+        tried = state.get("tried_titles", set())
+        candidates = [t for t in pool if t["title"] not in tried]
+        if not candidates:
+            return {"status": "no_more_topics"}
+
+        avoid_titles = list(state.get("recent_titles", [])) + list(tried)
+        try:
+            topic = pick_daily_topic(candidates[:30], recent_titles=avoid_titles, steer_hint=hint)
+        except Exception as e:
+            _log("WARNING", f"New-topic pick failed ({e}) — using next-highest-scored alternative")
+            t = candidates[0]
+            topic = {
+                "title": t["title"],
+                "source_url": t.get("url", ""),
+                "angle": t.get("description", t["title"]),
+                "why": "Next-highest-scored alternative topic",
+                "format": "text",
+            }
+
+        state["topic"] = topic
+        state["tried_titles"].add(topic.get("title", ""))
+        state["generate_count"] = 0
+        state["previous_posts"] = []
+        state.pop("research", None)
+        return {
+            "status": "ok",
+            "topic_title": topic.get("title", ""),
+            "angle": topic.get("angle", ""),
         }
 
     def tool_get_analytics_summary() -> dict:
@@ -197,6 +240,32 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             "advice": "" if score >= threshold else advice,
         }
 
+    def _generate_and_score(initial_hint: str = "") -> tuple[str | None, int]:
+        """Run the generate -> score loop (up to 3 attempts total, shared budget
+        with state['generate_count']), stopping early once the score clears the
+        dynamic threshold. Returns (post_text, score), or (None, 0) on failure
+        (tool_skip_today already called in that case)."""
+        post_text = ""
+        score = 0
+        hint = initial_hint
+        while state["generate_count"] < 3:
+            gen = tool_generate_post(hint=hint)
+            if "error" in gen:
+                _log("ERROR", f"Generation failed: {gen['error']}")
+                tool_skip_today(f"Generation failed: {gen['error']}")
+                return None, 0
+            post_text = gen["post_text"]
+
+            scored = tool_score_post(post_text)
+            score = scored["score"]
+            _log("INFO", f"Attempt {state['generate_count']}/3 — score {score}/100")
+
+            if scored["ready_to_send"] or state["generate_count"] >= 3:
+                break
+            hint = scored.get("advice") or "punchier hook, add a specific stat or number"
+
+        return post_text, score
+
     def tool_send_for_approval(post_text: str, score: int = 0) -> dict:
         if preview:
             print("\n" + "=" * 60)
@@ -217,7 +286,10 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             log_agent.info("Set DISCORD_BOT_TOKEN and DISCORD_APPROVALS_CHANNEL_ID to enable approval flow.")
             return {"action": "skip", "reason": "Discord not configured — approval required but unavailable"}
 
-        decision = wait_for_approval(msg_id, timeout_minutes=120, num_variants=1)
+        # Shorter wait after a "new topic" switch — first wait already used most
+        # of the workflow's time budget.
+        timeout = 120 if state["topic_switches"] == 0 else 60
+        decision = wait_for_approval(msg_id, timeout_minutes=timeout, num_variants=1)
         return {
             "action": decision.get("action"),
             "hint": decision.get("hint", ""),
@@ -302,24 +374,9 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     _log("INFO", f"Research: {research_result.get('sources_found', 0)} sources")
 
     # 4–5. Generate + score (up to 3 attempts, stop early if score meets threshold)
-    post_text = ""
-    score = 0
-    hint = ""
-    for attempt in range(3):
-        gen = tool_generate_post(hint=hint)
-        if "error" in gen:
-            _log("ERROR", f"Generation failed: {gen['error']}")
-            tool_skip_today(f"Generation failed: {gen['error']}")
-            return
-        post_text = gen["post_text"]
-
-        scored = tool_score_post(post_text)
-        score = scored["score"]
-        _log("INFO", f"Attempt {attempt + 1}/3 — score {score}/100")
-
-        if scored["ready_to_send"] or attempt == 2:
-            break
-        hint = scored.get("advice") or "punchier hook, add a specific stat or number"
+    post_text, score = _generate_and_score()
+    if post_text is None:
+        return
 
     # 6–7. Approval + publish (loop handles regenerate-after-approval)
     while True:
@@ -346,6 +403,19 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             score = scored["score"]
             _log("INFO", f"Regenerated — score {score}/100")
 
+        elif action == "new_topic" and state["topic_switches"] < MAX_TOPIC_SWITCHES:
+            pick = tool_pick_new_topic(decision.get("hint", ""))
+            if pick.get("status") != "ok":
+                _log("WARNING", "No alternative topics left in today's pool — re-sending same post.")
+                continue
+            state["topic_switches"] += 1
+            _log("INFO", f"New topic: {pick['topic_title']}")
+            _log("INFO", f"Angle: {pick['angle']}")
+            tool_research_topic()
+            post_text, score = _generate_and_score()
+            if post_text is None:
+                return
+
         elif action == "timeout":
             _log("INFO", "Approval timeout — auto-publishing.")
             try:
@@ -356,6 +426,11 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             return
 
         else:
-            reason = "max regenerations reached" if action == "regenerate" else action
+            if action == "regenerate":
+                reason = "max regenerations reached"
+            elif action == "new_topic":
+                reason = "max topic switches reached"
+            else:
+                reason = action
             tool_skip_today(reason)
             return
