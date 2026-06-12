@@ -27,12 +27,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download performance DB
-        uses: actions/download-artifact@v4
+      - name: Restore performance DB
+        uses: actions/cache@v4
         with:
-          name: performance-db
-          path: .
-        continue-on-error: true
+          path: performance.db
+          key: performance-db-${{ github.run_id }}
+          restore-keys: |
+            performance-db-
 
       - name: Poll LinkedIn metrics
         env:
@@ -50,11 +51,3 @@ jobs:
           LOG_FORMAT: json
         run: python discord_bot.py --send-report
         continue-on-error: true
-
-      - name: Upload performance DB
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: performance-db
-          path: performance.db
-          retention-days: 90

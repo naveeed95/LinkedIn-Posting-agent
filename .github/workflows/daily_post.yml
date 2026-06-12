@@ -45,12 +45,13 @@ jobs:
           path: .st_cache
           key: minilm-l6-v2
 
-      - name: Download performance DB
-        uses: actions/download-artifact@v4
+      - name: Restore performance DB
+        uses: actions/cache@v4
         with:
-          name: performance-db
-          path: .
-        continue-on-error: true
+          path: performance.db
+          key: performance-db-${{ github.run_id }}
+          restore-keys: |
+            performance-db-
 
       - name: Prepare cache directory
         run: mkdir -p cache
@@ -113,14 +114,6 @@ jobs:
           else
             python run.py
           fi
-
-      - name: Upload performance DB
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: performance-db
-          path: performance.db
-          retention-days: 90
 
       - name: Upload LinkedIn rules cache
         uses: actions/upload-artifact@v4
