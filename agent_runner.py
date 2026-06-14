@@ -24,7 +24,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     import topic_log
     from content_generator import engagement_scorer, generate_text_post_variants, pick_daily_topic
     from research import fetch_trending_topics, fetch_deep_topic_research
-    from linkedin_poster import post_first_comment, post_to_linkedin
+    from linkedin_poster import get_recent_org_posts, post_first_comment, post_to_linkedin
     from analytics_tracker import (
         get_performance_summary,
         get_top_hashtags,
@@ -98,6 +98,20 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         except Exception as e:
             _log("WARNING", f"Could not fetch recent post texts: {e}")
             state["recent_post_texts"] = []
+
+        # Ground-truth check straight from LinkedIn — catches topics already
+        # covered before data/posted_topics.json existed (or if it's ever
+        # reset), independent of the git-committed log.
+        try:
+            live_posts = get_recent_org_posts(days=30)
+        except Exception as e:
+            _log("WARNING", f"Could not fetch live LinkedIn post history: {e}")
+            live_posts = []
+        if live_posts:
+            recent_topic_texts = recent_topic_texts + live_posts
+            state["recent_post_texts"] = state["recent_post_texts"] + [
+                p["text"] for p in live_posts if p["days_ago"] <= 7
+            ]
 
         _log("INFO", "Fetching trending topics from all sources...")
         try:

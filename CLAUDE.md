@@ -112,6 +112,8 @@ There is **no pre-planning step and no `weekly_schedule.json`**. Every day, `age
 - `tool_score_post()` additionally calls `topic_similarity.is_duplicate_post()` against `topic_log.get_recent_post_texts(days=7)` — if the *generated post body* is ≥0.85 similar to anything published in the last week (even on a different topic/angle), it's scored as `ready_to_send: False` and the agent regenerates with a "make this distinctly different" hint.
 - `tool_publish_post()` calls `topic_log.record_posted_topic(title, topic_text, source_url, post_text)` on every successful publish. `daily_post.yml` commits and pushes `data/posted_topics.json` at the end of the run (`permissions: contents: write`).
 
+**Live LinkedIn ground-truth layer** (`linkedin_poster.get_recent_org_posts`): `tool_pick_daily_topic()` also fetches the org page's own last-30-days posts directly from the LinkedIn API and merges them into `recent_topic_texts` (feeds `filter_hard_duplicates`/`apply_dedup_penalty`) and into `state["recent_post_texts"]` (feeds `is_duplicate_post`, last-7-days). This covers topics posted *before* `data/posted_topics.json` existed (or after any future reset/eviction of that file) — LinkedIn itself is the source of truth, not just the git log. Fails open (empty list) if the API call errors, so it never blocks posting.
+
 Don't bypass `topic_log` for dedup — `performance.db`-based history (`get_topic_history`, `get_recent_topic_texts` in `analytics_tracker.py`) is no longer used for this purpose because it's not durable.
 
 ### Daily post flow (`python run.py`)
