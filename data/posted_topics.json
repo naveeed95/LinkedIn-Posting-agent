@@ -89,5 +89,12 @@
     "source_url": "https://techcrunch.com/2026/06/23/anthropics-claude-tag-is-learning-your-company-one-slack-message-at-a-time/",
     "post_text": "Your new hire takes 6 months to learn what Slack already knows.\n\nYour team's collective knowledge is trapped inside millions of messages.\n\nAnthropic just released Claude Tag. It's an AI that lives in your Slack.\n\nType @Claude and it reads every thread, file, and decision your team has made.\n\nNo training. No setup. It already knows your business.\n\nA new employee asks \"How do we handle refunds?\"\n\nClaude Tag finds the exact thread from 8 months ago with the actual policy.\n\nNo more \"I think Sarah knows\" or \"Check the drive folder.\"\n\nThe tool costs $28 per user per month on the Enterprise plan.\n\nCompare that to what you lose when a senior employee leaves with 3 years of context in their head.\n\nYour company already has a knowledge base. It's just not searchable yet.\n\nWhat's one question your team asks you every week that a Slack AI could answer instantly — and how many hours would that save you?\n\n#ClaudeTag #KnowledgeManagement",
     "posted_at": "2026-06-24T10:47:26.215436"
+  },
+  {
+    "title": "Claude Code costs up to $200 a month. Goose does the same thing for free.",
+    "topic_text": "Claude Code costs up to $200 a month. Goose does the same thing for free. — Small businesses can replace a $200/month AI coding tool with a free open-source alternative that does the same job, saving thousands annually without sacrificing capability.",
+    "source_url": "https://venturebeat.com/infrastructure/claude-code-costs-up-to-usd200-a-month-goose-does-the-same-thing-for-free",
+    "post_text": "$200 a month for an AI tool your team barely uses\n\nMost small businesses are paying for features they don't need\n\nThat Claude Code subscription is eating $2,400 a year from your bottom line\n\nGoose does the same job for zero dollars\n\nIt's an open-source AI coding agent from Block with 26,100+ stars on GitHub\n\n362 contributors have built 102 releases since launch\n\nThe latest version shipped January 19, 2026\n\nSaves your team $200/month on something that should be free\n\nThe cost of AI tools isn't the problem — it's paying for what you won't use\n\nWhat's the one software subscription you've been meaning to cancel but haven't — and what's stopping you from switching to a free alternative?\n\nDrop it in the comments\n\n#ClaudeCode #OpenSource",
+    "posted_at": "2026-06-25T12:37:15.292397"
   }
 ]
