@@ -79,6 +79,7 @@ output/                    # Generated PDFs / PNGs (gitignored)
 - `DISCORD_POSTED_CHANNEL_ID` — post confirmation after publishing
 - `DISCORD_ANALYTICS_CHANNEL_ID` — reports + failure alerts
 - `DISCORD_COMMENTS_CHANNEL_ID` — comment reply suggestions
+- `DISCORD_REDDIT_CHANNEL_ID` — *optional*. Daily Reddit draft (title + body, copy-paste-ready) is sent here after LinkedIn publishes. If unset, the Reddit draft step is skipped entirely (LinkedIn publish is unaffected).
 
 **GitHub (for token refresh):**
 - `GITHUB_PAT` — PAT with `secrets:write` on this repo.
@@ -127,6 +128,7 @@ agent_runner.run_agent()  ← Groq Llama 3.3 70B tool-use loop
   → score_post()           # dynamic threshold (90% of recent_avg, clamped 55–75, fallback 62)
   → send_for_approval()    # Discord 120-min wait
   → publish_post()         # post_to_linkedin + first comment + log_post
+    → adapt_post_for_reddit() + send_reddit_draft() (fire-and-forget, separate #reddit channel)
 ```
 
 Discord approval commands (reply in #approvals channel):
@@ -135,6 +137,10 @@ Discord approval commands (reply in #approvals channel):
 - `new topic` / `new topic: focus on automation` — scrap current topic, pick a different one from today's research pool and regenerate (max 1 switch per run — second wait is 60min, not 120min)
 - `edit: [full post text]` — post custom text verbatim
 - `skip` — log slot as skipped
+
+### Reddit draft (manual posting, no API)
+
+Reddit closed self-service API app creation in Nov 2025 (Responsible Builder Policy — see support.reddithelp.com) — no new OAuth app can be created for this account, so there is no automated Reddit posting. After LinkedIn publishes successfully, `agent_runner.run_agent()` rewrites the post for Reddit via `content_generator.adapt_post_for_reddit()` and sends the title/body as a copy-paste-ready message to its own Discord channel (`send_reddit_draft()` in `discord_bot.py`, posted to `DISCORD_REDDIT_CHANNEL_ID`) — no polling, no approval flow, no actual posting. A human pastes it into Reddit manually. Skipped entirely if that env var is unset. Any failure in this block is caught and logged; it never affects the already-published LinkedIn post.
 
 ### LinkedIn rules injection
 `linkedin_rules_fetcher.fetch_rules()` runs 5 parallel Tavily queries about current LinkedIn algorithm rules and best practices. Results cached 24 hours in `cache/linkedin_rules.json`. Injected into system prompt for ALL LLM calls via `_generate()`. If `TAVILY_API_KEY` is missing, rules injection is silently skipped — posts still generate without it.
@@ -194,6 +200,7 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 - Don't commit `.env`, `performance.db`, `cache/*.json`, or `output/`. (`data/posted_topics.json` IS committed — that's the permanent dedup log, see "Permanent topic-dedup".)
 - Don't skip `_fix_post_quality`. Banned words leak into LinkedIn and cause algorithm penalty.
 - Don't run `linkedin_auth.py` in CI — interactive browser flow only.
+- Don't reintroduce a Reddit OAuth app/poster (`reddit_poster.py`, `reddit_auth.py`) — self-service Reddit API app creation is closed platform-wide (Responsible Builder Policy, Nov 2025); Reddit is copy-paste-manual via `send_reddit_draft()` until/unless a manually-approved app exists.
 - Don't reintroduce weekly pre-planning, `weekly_schedule.json`, slot-based scheduling, or `DAY_FORMAT`/`DAY_STRATEGY` constants — topic + format are decided dynamically by the LLM at write-time, daily.
 - Don't add a personal LinkedIn fallback to `_author_urn()`.
 

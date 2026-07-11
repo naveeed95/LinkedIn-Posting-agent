@@ -8,11 +8,13 @@ Required env vars:
   DISCORD_COMMENTS_CHANNEL_ID
   DISCORD_POSTED_CHANNEL_ID
   DISCORD_ANALYTICS_CHANNEL_ID
+  DISCORD_REDDIT_CHANNEL_ID
 
 Exports:
   send_approval_message(variants, scores, topic, day)         -> str | None (message_id)
   wait_for_approval(message_id, timeout_minutes)              -> dict
   send_posted_confirmation(post_url, variant_used, post_text) -> None
+  send_reddit_draft(title, body, topic)                       -> None
   send_comment_approval(comment_author, comment_text, suggested_reply) -> None
   send_analytics_report(report_data)                         -> None
   send_rules_update(changes)                                 -> None
@@ -300,6 +302,28 @@ def send_posted_confirmation(post_url: str, variant_used: int, post_text: str) -
 **Time:** {timestamp}"""
 
     _send_message(channel_id, content[:2000])
+
+
+def send_reddit_draft(title: str, body: str, topic: dict) -> None:
+    """Send today's Reddit-adapted draft to Discord for the human to copy-paste and post manually.
+
+    Reddit closed self-service API app creation (Responsible Builder Policy, Nov 2025) — no OAuth
+    app can be created for this account, so this is a fire-and-forget draft, not an approval flow.
+    """
+    date_str = datetime.now().strftime("%A %d %B %Y")
+    divider = "━" * 40
+
+    content = (
+        f"🔶 **REDDIT DRAFT (post manually)** | {date_str}\n"
+        f"**Topic:** {topic.get('title', '')}\n\n"
+        f"{divider}\n"
+        f"**Title:** {title}\n\n"
+        f"{body}\n"
+        f"{divider}"
+    )
+
+    channel_id = _channel("DISCORD_REDDIT_CHANNEL_ID")
+    _send_long_message(channel_id, content)
 
 
 def send_comment_approval(

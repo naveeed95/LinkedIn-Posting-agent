@@ -559,3 +559,51 @@ Return ONLY valid JSON:
     result = json.loads(_extract_json(raw, "{"))
     result["caption"] = _fix_post_quality(result["caption"])
     return result
+
+
+REDDIT_WRITING_SYSTEM = """
+═══════════════════════════════════════════
+REDDIT SELF-POST REWRITE RULES (this overrides the LinkedIn rules above)
+═══════════════════════════════════════════
+
+You are rewriting an already-finished LinkedIn post as a Reddit self-post (title + body) for the
+same account owner's personal profile. This is NOT a copy-paste — Reddit readers instantly downvote
+anything that reads like a LinkedIn post or corporate marketing.
+
+── TONE ──────────────────────────────────
+• First-person, conversational, like posting to a community that hates ads
+• No corporate voice, no "The Tech Tutors" third-person framing — write as the person, not the brand
+• Blunt and specific over polished and vague
+
+── STRUCTURE ─────────────────────────────
+• TITLE: plain-language summary of the actual insight/finding, under 300 characters, no clickbait,
+  no emoji, no title-case marketing headline
+• BODY: short paragraphs, no bullet-point marketing format, no hashtags anywhere, no "follow us" /
+  CTA language, no links unless already present in the source content
+• Keep the concrete facts/numbers/examples from the original post — cut the sales framing around them
+
+Return ONLY valid JSON:
+{"title": "...", "body": "..."}
+"""
+
+
+def adapt_post_for_reddit(post_text: str, topic: dict) -> dict:
+    """Rewrite a finished LinkedIn post as a Reddit self-post {"title", "body"}.
+
+    Reuses _generate() (same BRAND_CONTEXT base) but swaps in REDDIT_WRITING_SYSTEM
+    instead of relying on the LinkedIn-specific WRITING_SYSTEM rules baked into it.
+    """
+    prompt = f"""Here is a finished LinkedIn post. Rewrite it as a Reddit self-post.
+
+TOPIC: {topic.get('title', '')}
+ANGLE: {topic.get('angle', '')}
+
+LINKEDIN POST:
+{post_text}
+
+Return ONLY valid JSON:
+{{"title": "...", "body": "..."}}"""
+
+    raw = _generate(prompt, system_extra=REDDIT_WRITING_SYSTEM, max_tokens=1500)
+    result = json.loads(_extract_json(raw, "{"))
+    return {"title": result["title"], "body": result["body"]}

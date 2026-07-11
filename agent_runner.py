@@ -22,7 +22,12 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     """Direct posting pipeline. Called from cmd_auto() in run.py."""
 
     import topic_log
-    from content_generator import engagement_scorer, generate_text_post_variants, pick_daily_topic
+    from content_generator import (
+        adapt_post_for_reddit,
+        engagement_scorer,
+        generate_text_post_variants,
+        pick_daily_topic,
+    )
     from research import fetch_trending_topics, fetch_deep_topic_research
     from linkedin_poster import get_recent_org_posts, post_first_comment, post_to_linkedin
     from analytics_tracker import (
@@ -35,6 +40,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         notify_timeout,
         send_approval_message,
         send_posted_confirmation,
+        send_reddit_draft,
         wait_for_approval,
     )
 
@@ -386,6 +392,17 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                 )
             except Exception as e:
                 log_agent.warning(f"Permanent topic log failed: {e}")
+
+            try:
+                reddit_channel = os.environ.get("DISCORD_REDDIT_CHANNEL_ID", "")
+                if not reddit_channel:
+                    log_agent.info("DISCORD_REDDIT_CHANNEL_ID not set — skipping Reddit draft.")
+                else:
+                    reddit_content = adapt_post_for_reddit(post_text, topic)
+                    send_reddit_draft(reddit_content["title"], reddit_content["body"], topic)
+                    log_agent.info("Reddit draft sent for manual posting.")
+            except Exception as e:
+                log_agent.warning(f"Reddit draft generation failed: {e}")
 
             source_url = topic.get("source_url", "")
             landing = os.environ.get("LANDING_PAGE_URL", "")
