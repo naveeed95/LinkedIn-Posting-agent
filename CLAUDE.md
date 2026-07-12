@@ -29,6 +29,9 @@ LinkedIn posting agent for **The Tech Tutors** — fully automated content engin
 | `python discord_bot.py --send-report` | Build report, write to Sheets, post to Discord. |
 | `python discord_bot.py --rules-update` | Send LinkedIn algorithm change alert. |
 | `python auto_responder.py` | Fetch unanswered comments, generate replies, queue to Discord. |
+| `python reddit_engagement.py` | Scan Reddit for ask-for-help threads (AI/business/freelance/tech), draft replies, push batch to Discord. |
+| `python reddit_engagement.py --dry-run` | Draft + log only — no Discord send, no seen-set save. |
+| `python reddit_engagement.py --fetch-only` | Candidate list only, zero LLM calls — for tuning the relevance filter. |
 
 ## File map
 
@@ -46,6 +49,7 @@ linkedin_rules_fetcher.py  # LinkedIn algorithm rules via Tavily search (24h TTL
 analytics_tracker.py       # SQLite schema, log_post, poll_metrics, summary, Sheets export
 discord_bot.py             # HTTP API: approval messages, polling for replies, reports
 auto_responder.py          # LinkedIn comment reply suggestions → Discord queue
+reddit_engagement.py       # Reddit ask-for-help scan → draft replies → Discord queue (lead-gen, no posting API)
 topic_similarity.py        # MiniLM embedding dedup: soft penalty, hard topic filter, post-content dup check
 topic_log.py               # Permanent, git-committed log of posted topics/post text (data/posted_topics.json)
 test_llm.py                # Smoke test for Groq models
@@ -56,9 +60,12 @@ test_llm.py                # Smoke test for Groq models
   comment_reply.yml        # Auto-responder for LinkedIn comments
   rules_update.yml         # Refresh LinkedIn rules cache
   token_refresh.yml        # Rotate LinkedIn access token monthly
+  reddit_engagement.yml    # Cron: 0 */8 * * * → python reddit_engagement.py
 performance.db             # SQLite: posts, metrics, topics_history, hashtag_metrics
 data/posted_topics.json    # Permanent dedup log — committed to git, never reset (see topic_log.py)
+data/engagement_subreddits.json  # Permanent, git-committed, auto-growing target subreddit list (see reddit_engagement.py)
 cache/linkedin_rules.json  # Algorithm rules cache (24h TTL, Tavily-fetched)
+seen_reddit_threads.json   # Rolling dedup state (cache-tier, gitignored) — reddit_engagement.py
 output/                    # Generated PDFs / PNGs (gitignored)
 ```
 
@@ -80,6 +87,7 @@ output/                    # Generated PDFs / PNGs (gitignored)
 - `DISCORD_ANALYTICS_CHANNEL_ID` — reports + failure alerts
 - `DISCORD_COMMENTS_CHANNEL_ID` — comment reply suggestions
 - `DISCORD_REDDIT_CHANNEL_ID` — *optional*. Daily Reddit draft (title + body, copy-paste-ready) is sent here after LinkedIn publishes. If unset, the Reddit draft step is skipped entirely (LinkedIn publish is unaffected).
+- `DISCORD_REDDIT_ENGAGEMENT_CHANNEL_ID` — *optional*. Reddit engagement drafts (thread + suggested reply, copy-paste-ready) sent here every 8 hours by `reddit_engagement.py`. If unset, sending is skipped — fetch/discovery/generation still run harmlessly, just nothing is posted. Separate channel from `DISCORD_REDDIT_CHANNEL_ID` (unrelated daily cross-post).
 
 **GitHub (for token refresh):**
 - `GITHUB_PAT` — PAT with `secrets:write` on this repo.
@@ -142,6 +150,14 @@ Discord approval commands (reply in #approvals channel):
 
 Reddit closed self-service API app creation in Nov 2025 (Responsible Builder Policy — see support.reddithelp.com) — no new OAuth app can be created for this account, so there is no automated Reddit posting. After LinkedIn publishes successfully, `agent_runner.run_agent()` rewrites the post for Reddit via `content_generator.adapt_post_for_reddit()` and sends the title/body as a copy-paste-ready message to its own Discord channel (`send_reddit_draft()` in `discord_bot.py`, posted to `DISCORD_REDDIT_CHANNEL_ID`) — no polling, no approval flow, no actual posting. A human pastes it into Reddit manually. Skipped entirely if that env var is unset. Any failure in this block is caught and logged; it never affects the already-published LinkedIn post.
 
+### Reddit engagement (lead-gen, manual reply posting, no API)
+
+Separate from the daily Reddit cross-post draft above — `reddit_engagement.py` runs every 8 hours (`reddit_engagement.yml`) to find potential clients, not to cross-post today's article. It scans a target subreddit list (`data/engagement_subreddits.json`) across four categories — AI, Business, Freelance, Tech — for fresh (`/new.json`, last 72h) self-posts that look like a genuine ask for help (regex heuristic in `_is_genuine_ask`/`_QUESTION_PATTERNS`, excludes self-promo via `_PROMO_PATTERNS`, no LLM call in this filtering step). Candidates below `MIN_RELEVANCE_SCORE` (40) are dropped before drafting — cost control, so a weak 5th/6th-best candidate doesn't burn an LLM call just to fill the quota. Top 5 of what's left get a drafted reply via `UTILITY_MODEL` (DeepSeek — value-first, non-salesy tone, never mentions "The Tech Tutors" or links anywhere — see `REDDIT_ENGAGEMENT_SYSTEM`), batched and pushed to `DISCORD_REDDIT_ENGAGEMENT_CHANNEL_ID` via `send_reddit_engagement_drafts()`. Fire-and-forget, same as the daily draft — no polling, no posting back, since there's still no Reddit posting API.
+
+**Auto-growing subreddit list:** `data/engagement_subreddits.json` starts from a 9-subreddit seed list but is never fixed — `discover_subreddits()` (throttled to once/day via the file's `last_discovery` field) searches Reddit's subreddit-search endpoint per category and appends up to 2 new validated subs per discovery (`subscribers >= 5000`, not NSFW/quarantined, not already present), capped at 40 total subs. This file is **git-committed** (same permanence tier as `data/posted_topics.json`) by `reddit_engagement.yml`, not cached — it's a growing business asset, not disposable state.
+
+Dedup uses its own rolling seen-set `seen_reddit_threads.json` (cache-tier, gitignored, 14-day window) — unlike `auto_responder`'s equivalent file, there's no server-side ground truth to fall back on here (no Reddit API to check "did we already reply"), so losing this cache risks the same thread getting redrafted into Discord multiple times a day; it's restored/saved via `actions/cache@v4` in the workflow.
+
 ### LinkedIn rules injection
 `linkedin_rules_fetcher.fetch_rules()` runs 5 parallel Tavily queries about current LinkedIn algorithm rules and best practices. Results cached 24 hours in `cache/linkedin_rules.json`. Injected into system prompt for ALL LLM calls via `_generate()`. If `TAVILY_API_KEY` is missing, rules injection is silently skipped — posts still generate without it.
 
@@ -170,13 +186,16 @@ Every post variant runs through `_fix_post_quality` — Llama 70B pass that stri
 | `comment_reply.yml` | Daily | — | Fetch comments → suggest replies → Discord |
 | `rules_update.yml` | Weekly | — | Refresh LinkedIn rules cache |
 | `token_refresh.yml` | Monthly | — | Rotate LinkedIn access token |
+| `reddit_engagement.yml` | `0 */8 * * *` | — | Scan Reddit for genuine ask-for-help threads, draft replies, push to Discord |
 
 Persistence (via `actions/cache@v4`, not artifacts — artifacts are run-scoped in v4 and can't be restored cross-run):
 - `performance.db` — `performance-db-${{ github.run_id }}` key, `performance-db-` restore-keys prefix.
 - `cache/linkedin_rules.json` — `linkedin-rules-<date>` key, `linkedin-rules-` restore-keys prefix (24h TTL enforced by `linkedin_rules_fetcher.py`, not the cache key).
 - `data/posted_topics.json` — committed directly to git by `daily_post.yml` after publish (see "Permanent topic-dedup" above), not cached.
+- `seen_reddit_threads.json` — `reddit-engagement-seen-${{ github.run_id }}` key, `reddit-engagement-seen-` restore-keys prefix (cache-tier, evictable — see "Reddit engagement" above).
+- `data/engagement_subreddits.json` — committed directly to git by `reddit_engagement.yml` after each scan (same permanent tier as `data/posted_topics.json`), not cached.
 
-Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all workflows that touch the DB.
+Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all workflows that touch the DB. `reddit_engagement.yml` uses its own `reddit-engagement` group (doesn't touch `performance.db`).
 
 ## Known production gotchas
 
@@ -189,7 +208,7 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 ## Conventions
 
 - `--preview` for dry-run (generate + score, no publish, no Discord).
-- **Structured logging** via `logger.get_logger("area")` — emits text locally, JSON when `LOG_FORMAT=json` (set in all workflows). Areas: `agent`, `analytics`, `auto`, `content`, `discord`, `linkedin`, `llm`, `preview`, `research`, `responder`, `rules`, `similarity`, `startup`, `token_refresher`. Use `extra={"key": value}` for structured fields. CLI UX prints (banners, separators, interactive prompts) stay as `print()`.
+- **Structured logging** via `logger.get_logger("area")` — emits text locally, JSON when `LOG_FORMAT=json` (set in all workflows). Areas: `agent`, `analytics`, `auto`, `content`, `discord`, `linkedin`, `llm`, `preview`, `reddit_engagement`, `research`, `responder`, `rules`, `similarity`, `startup`, `token_refresher`. Use `extra={"key": value}` for structured fields. CLI UX prints (banners, separators, interactive prompts) stay as `print()`.
 - `BRAND_CONTEXT` and `WRITING_SYSTEM` in `content_generator.py` are source of truth for brand voice. Never inline overrides — use `system_extra` parameter on `_generate()`.
 - Post format/topic/angle are decided fresh each day by the agent loop at write-time — there is no pre-assigned per-day schedule to read from.
 
@@ -200,7 +219,7 @@ Concurrency group: `posting-agent-db` with `cancel-in-progress: false` on all wo
 - Don't commit `.env`, `performance.db`, `cache/*.json`, or `output/`. (`data/posted_topics.json` IS committed — that's the permanent dedup log, see "Permanent topic-dedup".)
 - Don't skip `_fix_post_quality`. Banned words leak into LinkedIn and cause algorithm penalty.
 - Don't run `linkedin_auth.py` in CI — interactive browser flow only.
-- Don't reintroduce a Reddit OAuth app/poster (`reddit_poster.py`, `reddit_auth.py`) — self-service Reddit API app creation is closed platform-wide (Responsible Builder Policy, Nov 2025); Reddit is copy-paste-manual via `send_reddit_draft()` until/unless a manually-approved app exists.
+- Don't reintroduce a Reddit OAuth app/poster (`reddit_poster.py`, `reddit_auth.py`) — self-service Reddit API app creation is closed platform-wide (Responsible Builder Policy, Nov 2025); Reddit is copy-paste-manual via `send_reddit_draft()` until/unless a manually-approved app exists. `reddit_engagement.py` follows the same constraint — it only ever pushes drafts to Discord, never calls a Reddit write endpoint.
 - Don't reintroduce weekly pre-planning, `weekly_schedule.json`, slot-based scheduling, or `DAY_FORMAT`/`DAY_STRATEGY` constants — topic + format are decided dynamically by the LLM at write-time, daily.
 - Don't add a personal LinkedIn fallback to `_author_urn()`.
 

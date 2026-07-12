@@ -9,12 +9,14 @@ Required env vars:
   DISCORD_POSTED_CHANNEL_ID
   DISCORD_ANALYTICS_CHANNEL_ID
   DISCORD_REDDIT_CHANNEL_ID
+  DISCORD_REDDIT_ENGAGEMENT_CHANNEL_ID
 
 Exports:
   send_approval_message(variants, scores, topic, day)         -> str | None (message_id)
   wait_for_approval(message_id, timeout_minutes)              -> dict
   send_posted_confirmation(post_url, variant_used, post_text) -> None
   send_reddit_draft(title, body, topic)                       -> None
+  send_reddit_engagement_drafts(drafts)                       -> str | None (message_id)
   send_comment_approval(comment_author, comment_text, suggested_reply) -> None
   send_analytics_report(report_data)                         -> None
   send_rules_update(changes)                                 -> None
@@ -324,6 +326,28 @@ def send_reddit_draft(title: str, body: str, topic: dict) -> None:
 
     channel_id = _channel("DISCORD_REDDIT_CHANNEL_ID")
     _send_long_message(channel_id, content)
+
+
+def send_reddit_engagement_drafts(drafts: list[dict]) -> str | None:
+    """Batch-push N thread+reply drafts to Discord for manual copy-paste.
+
+    Fire-and-forget — no polling, no approval flow (Reddit has no posting API,
+    same constraint as send_reddit_draft). Each draft dict: subreddit, title,
+    permalink, reply.
+    """
+    channel_id = _channel("DISCORD_REDDIT_ENGAGEMENT_CHANNEL_ID")
+    date_str = datetime.now().strftime("%A %d %B %Y")
+    divider = "━" * 40
+
+    header = f"🟠 **REDDIT ENGAGEMENT — {len(drafts)} thread(s)** | {date_str}\n"
+    sections = [
+        f"{divider}\n**r/{d['subreddit']}** — {d['title']}\n"
+        f"🔗 https://reddit.com{d['permalink']}\n\n"
+        f"**Suggested reply:**\n{d['reply']}"
+        for d in drafts
+    ]
+    content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}"
+    return _send_long_message(channel_id, content)
 
 
 def send_comment_approval(

@@ -1,0 +1,68 @@
+{
+  "subreddits": [
+    {
+      "name": "artificial",
+      "category": "AI",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "ArtificialInteligence",
+      "category": "AI",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "LocalLLaMA",
+      "category": "AI",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "smallbusiness",
+      "category": "Business",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "Entrepreneur",
+      "category": "Business",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "freelance",
+      "category": "Freelance",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "freelancers",
+      "category": "Freelance",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "technology",
+      "category": "Tech",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    },
+    {
+      "name": "SaaS",
+      "category": "Tech",
+      "subscribers": 0,
+      "added": "2026-07-12",
+      "source": "seed"
+    }
+  ],
+  "last_discovery": "2026-07-12"
+}
