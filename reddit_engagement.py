@@ -72,15 +72,18 @@ someone asked for help with an AI/tech/business/freelance problem.
 TONE:
 - First-person, casual redditor voice helping a stranger for free — never corporate
 - Reddit instantly downvotes anything that smells like an ad
+- Write like a quick off-the-cuff Reddit comment, not a structured answer — one thought,
+  lowercase-casual is fine, no "firstly/also/additionally" essay structure
 
 CONTENT RULES:
-- Actually answer the question or give one concrete, actionable suggestion
-- Reference a specific detail from their post so it's clear you read it
-- Name specific generic tools/techniques if relevant (ChatGPT, Zapier, n8n, a library, etc.)
+- ONE concrete, actionable suggestion — not multiple points, not a list
+- Reference a specific detail from their post so it's clear you read it, briefly
+- Name a specific generic tool/technique if relevant (ChatGPT, Zapier, n8n, a library, etc.)
 - NEVER mention "The Tech Tutors", never link to any website, never say "DM me"/"reach out"/
   "I do this for a living" — zero self-promotion, this is pure value
 - If you don't have a genuinely useful answer, say so briefly instead of padding
-- Under 1200 characters, no markdown headers, no hashtags, no emoji
+- HARD LIMIT: 200 characters max, ideally closer to 100-150. No markdown, no hashtags, no emoji.
+  This is a strict limit — a reply that runs long is a failure, cut it down to one sentence.
 - Never use: delve, leverage, synergy, game-changer, cutting-edge, revolutionary"""
 
 
@@ -408,13 +411,23 @@ Reply:"""
         reply = call_model(
             UTILITY_MODEL, prompt,
             system      = REDDIT_ENGAGEMENT_SYSTEM,
-            max_tokens  = 400,  # 250 cut some replies off mid-sentence — 1200-char cap in the system prompt still bounds length
+            max_tokens  = 90,  # ~200 chars — enough room to finish a sentence, not enough to ramble
             temperature = 0.7,
         )
     except Exception as e:
         log.warning(f"generate_reply_draft error: {e}")
         return None
-    return reply.strip() if reply else None
+    if not reply:
+        return None
+    reply = reply.strip()
+    if len(reply) > 200:
+        # Model occasionally ignores the length rule — hard-enforce it rather than
+        # ship a long reply. Cut at the last sentence boundary under 200 chars,
+        # falling back to a flat truncation if there isn't one.
+        cut = reply[:200]
+        boundary = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+        reply = cut[:boundary + 1] if boundary > 40 else cut.rstrip() + "…"
+    return reply
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────────
