@@ -333,7 +333,7 @@ def send_reddit_engagement_drafts(drafts: list[dict]) -> str | None:
 
     Fire-and-forget — no polling, no approval flow (Reddit has no posting API,
     same constraint as send_reddit_draft). Each draft dict: subreddit, title,
-    permalink, reply.
+    url, reply.
     """
     channel_id = _channel("DISCORD_REDDIT_ENGAGEMENT_CHANNEL_ID")
     date_str = datetime.now().strftime("%A %d %B %Y")
@@ -342,7 +342,7 @@ def send_reddit_engagement_drafts(drafts: list[dict]) -> str | None:
     header = f"🟠 **REDDIT ENGAGEMENT — {len(drafts)} thread(s)** | {date_str}\n"
     sections = [
         f"{divider}\n**r/{d['subreddit']}** — {d['title']}\n"
-        f"🔗 https://reddit.com{d['permalink']}\n\n"
+        f"🔗 {d['url']}\n\n"
         f"**Suggested reply:**\n{d['reply']}"
         for d in drafts
     ]

@@ -16,12 +16,14 @@ Run: python reddit_engagement.py
      python reddit_engagement.py --fetch-only  (candidates only, zero LLM calls)
 """
 
+import calendar
 import json
 import re
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import feedparser
 import requests
 from dotenv import load_dotenv
 
@@ -292,22 +294,70 @@ def _save_seen_threads(fullnames: set[str]) -> None:
 
 
 # ── Fetch ────────────────────────────────────────────────────────────────────
+# Reddit's unauthenticated .json endpoints return 403 as of mid-2026 (platform-wide
+# lockdown, not an IP block — confirmed failing from both local and GH Actions
+# networks). The Atom .rss feeds are NOT blocked and carry full post text, so that's
+# the fetch path here instead. Trade-off: RSS has no num_comments/locked/stickied
+# fields, so those signals are unavailable (num_comments always 0 below — the
+# MAX_COMMENTS_TO_ENGAGE gate and its scoring penalty become inert as a result).
+
+_SELFTEXT_MARKER = "<!-- SC_OFF -->"  # only present in Reddit's RSS render of self-posts
+_FOOTER_PATTERN = re.compile(r"\s*submitted by\s*/u/\S+.*$", re.IGNORECASE | re.DOTALL)
+
+
+def _parse_entry(entry) -> dict:
+    raw_html = ""
+    if entry.get("content"):
+        raw_html = entry["content"][0].get("value", "")
+    elif entry.get("summary"):
+        raw_html = entry.get("summary", "")
+
+    is_self = _SELFTEXT_MARKER in raw_html
+    text = re.sub(r"<[^>]+>", " ", raw_html)
+    text = _FOOTER_PATTERN.sub("", text).strip()
+
+    created_utc = 0
+    if entry.get("published_parsed"):
+        created_utc = calendar.timegm(entry["published_parsed"])
+
+    return {
+        "name": entry.get("id", ""),
+        "title": entry.get("title", ""),
+        "selftext": text,
+        "is_self": is_self,
+        "locked": False,     # not derivable from RSS
+        "stickied": False,   # not derivable from RSS
+        "num_comments": 0,   # not derivable from RSS — see module note above
+        "created_utc": created_utc,
+        "url": entry.get("link", ""),
+    }
+
 
 def fetch_subreddit_new(sub: str, limit: int = 25) -> list[dict]:
-    try:
-        resp = requests.get(
-            f"https://www.reddit.com/r/{sub}/new.json",
-            params={"limit": limit},
-            headers={**HEADERS, "Accept": "application/json"},
-            timeout=10,
-        )
-        if not resp.ok:
-            log.warning(f"Reddit r/{sub} new.json failed ({resp.status_code})")
+    # Anonymous RSS rate-limits aggressively — retry with real backoff. This runs
+    # on an 8-hour schedule with nobody waiting live, so time spent here is cheap.
+    for attempt, backoff in enumerate((15, 30)):
+        try:
+            resp = requests.get(
+                f"https://www.reddit.com/r/{sub}/new.rss",
+                params={"limit": limit},
+                headers=HEADERS,
+                timeout=10,
+            )
+            if resp.status_code == 429:
+                log.info(f"Reddit r/{sub} rate-limited — waiting {backoff}s before retry.")
+                time.sleep(backoff)
+                continue
+            if not resp.ok:
+                log.warning(f"Reddit r/{sub} new.rss failed ({resp.status_code})")
+                return []
+            feed = feedparser.parse(resp.content)
+            return [_parse_entry(e) for e in feed.entries]
+        except Exception as e:
+            log.warning(f"Reddit r/{sub} error: {e}")
             return []
-        return [p.get("data", {}) for p in resp.json().get("data", {}).get("children", [])]
-    except Exception as e:
-        log.warning(f"Reddit r/{sub} error: {e}")
-        return []
+    log.warning(f"Reddit r/{sub} still rate-limited after retries — skipping this run.")
+    return []
 
 
 def fetch_engagement_candidates() -> list[dict]:
@@ -327,11 +377,10 @@ def fetch_engagement_candidates() -> list[dict]:
             candidates.append({
                 "fullname": fullname, "subreddit": sub,
                 "title": post.get("title", ""), "selftext": post.get("selftext", ""),
-                "permalink": post.get("permalink", ""),
-                "num_comments": post.get("num_comments", 0),
+                "url": post.get("url", ""),
                 "relevance_score": _score_candidate(post),
             })
-        time.sleep(0.5)  # polite delay, same as research.fetch_reddit
+        time.sleep(6)  # RSS endpoint rate-limits (429) under rapid back-to-back requests
     candidates.sort(key=lambda c: c["relevance_score"], reverse=True)
     log.info(f"Found {len(candidates)} eligible engagement candidate(s) across {len(sub_names)} sub(s).")
     return candidates
@@ -359,7 +408,7 @@ Reply:"""
         reply = call_model(
             UTILITY_MODEL, prompt,
             system      = REDDIT_ENGAGEMENT_SYSTEM,
-            max_tokens  = 250,
+            max_tokens  = 400,  # 250 cut some replies off mid-sentence — 1200-char cap in the system prompt still bounds length
             temperature = 0.7,
         )
     except Exception as e:
@@ -401,7 +450,7 @@ def queue_engagement(limit: int = 5, dry_run: bool = False) -> None:
 
     if dry_run:
         for d in drafts:
-            print(f"\nr/{d['subreddit']} — {d['title']}\nhttps://reddit.com{d['permalink']}\n{d['reply']}\n{'-' * 40}")
+            print(f"\nr/{d['subreddit']} — {d['title']}\n{d['url']}\n{d['reply']}\n{'-' * 40}")
         log.info(f"[dry-run] {len(drafts)} draft(s) generated, not sent to Discord, seen-set not saved.")
         return
 
@@ -414,6 +463,6 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if "--fetch-only" in args:
         for c in fetch_engagement_candidates()[:10]:
-            print(f"[{c['relevance_score']}] r/{c['subreddit']}: {c['title']}")
+            print(f"[{c['relevance_score']}] r/{c['subreddit']}: {c['title']} — {c['url']}")
     else:
         queue_engagement(dry_run="--dry-run" in args)
