@@ -440,16 +440,20 @@ def queue_engagement(limit: int = 5, dry_run: bool = False) -> None:
         log.info("No new engagement threads found.")
         return
 
+    # Every fetched candidate is marked seen here, not just the drafted top-N —
+    # otherwise a strong candidate that misses the cut (rank 6+) stays unseen,
+    # gets refetched next run since it's still within the 72h recency window,
+    # and can be redrafted/resent to Discord as a duplicate of itself.
+    new_seen: set[str] = {c["fullname"] for c in candidates}
+
     strong = [c for c in candidates if c["relevance_score"] >= MIN_RELEVANCE_SCORE]
     dropped = len(candidates) - len(strong)
     if dropped:
         log.info(f"Dropped {dropped} candidate(s) below MIN_RELEVANCE_SCORE ({MIN_RELEVANCE_SCORE}) — saving LLM calls.")
     top = strong[:limit]
     drafts = []
-    new_seen: set[str] = set()
     for c in top:
         log.info(f"Drafting reply for r/{c['subreddit']}: {c['title'][:80]}")
-        new_seen.add(c["fullname"])
         reply = generate_reply_draft(c)
         if reply:
             drafts.append({**c, "reply": reply})
