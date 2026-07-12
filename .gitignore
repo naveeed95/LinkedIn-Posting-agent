@@ -22,6 +22,7 @@ venv/
 # Rolling dedup state (cache-tier, evictable — not a permanent record)
 seen_comment_urns.json
 seen_reddit_threads.json
+seen_reddit_leads.json
 
 # Generated output
 output/

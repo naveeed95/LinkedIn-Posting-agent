@@ -1,0 +1,85 @@
+name: Reddit Leads Scan
+
+on:
+  schedule:
+    - cron: '0 4,12,20 * * *'  # every 8 hours, staggered from reddit_engagement.yml (0 */8 * * *)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — print leads, skip Discord + seen-set save'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reddit-leads
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore seen-leads dedup cache
+        if: github.event.inputs.dry_run != 'true'
+        uses: actions/cache@v4
+        with:
+          path: seen_reddit_leads.json
+          key: reddit-leads-seen-${{ github.run_id }}
+          restore-keys: |
+            reddit-leads-seen-
+
+      - name: Scan Reddit and queue hiring-intent leads
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_REDDIT_LEADS_CHANNEL_ID: ${{ secrets.DISCORD_REDDIT_LEADS_CHANNEL_ID }}
+          LOG_FORMAT: json
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python reddit_leads.py --dry-run
+          else
+            python reddit_leads.py
+          fi
+
+      - name: Commit query rotation state
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain data/lead_query_state.json 2>/dev/null)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/lead_query_state.json
+            git commit -m "chore: update lead query rotation cursor [skip ci]"
+            for i in 1 2 3; do
+              git pull --rebase origin "${{ github.ref_name }}" && git push && break
+              echo "Push attempt $i failed — retrying..."
+              sleep 5
+            done
+          else
+            echo "No changes to data/lead_query_state.json — skipping commit."
+          fi
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ANALYTICS_CHANNEL_ID: ${{ secrets.DISCORD_ANALYTICS_CHANNEL_ID }}
+        run: |
+          python notify_failure.py \
+            --workflow-name "Reddit Leads" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

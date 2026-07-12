@@ -17,6 +17,7 @@ Exports:
   send_posted_confirmation(post_url, variant_used, post_text) -> None
   send_reddit_draft(title, body, topic)                       -> None
   send_reddit_engagement_drafts(drafts)                       -> str | None (message_id)
+  send_reddit_leads(posts)                                     -> str | None (message_id)
   send_comment_approval(comment_author, comment_text, suggested_reply) -> None
   send_analytics_report(report_data)                         -> None
   send_rules_update(changes)                                 -> None
@@ -346,6 +347,26 @@ def send_reddit_engagement_drafts(drafts: list[dict]) -> str | None:
         f"**Suggested reply:**\n{d['reply']}"
         for d in drafts
     ]
+    content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}"
+    return _send_long_message(channel_id, content)
+
+
+def send_reddit_leads(posts: list[dict]) -> str | None:
+    """Batch-push N raw hiring-intent posts to Discord — discovery only, no drafted
+    reply, no self-promo. Each post dict: subreddit, title, url, selftext, age.
+    """
+    channel_id = _channel("DISCORD_REDDIT_LEADS_CHANNEL_ID")
+    date_str = datetime.now().strftime("%A %d %B %Y")
+    divider = "━" * 40
+
+    header = f"💼 **HIRING LEADS — {len(posts)} post(s), newest first** | {date_str}\n"
+    sections = []
+    for p in posts:
+        snippet = p.get("selftext", "")[:200]
+        sections.append(
+            f"{divider}\n**r/{p['subreddit']}** — {p['title']} _({p.get('age', '')})_\n"
+            f"🔗 {p['url']}\n\n{snippet}"
+        )
     content = header + "\n" + "\n\n".join(sections) + f"\n\n{divider}"
     return _send_long_message(channel_id, content)
 
