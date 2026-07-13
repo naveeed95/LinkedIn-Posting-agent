@@ -93,13 +93,13 @@ PERSON_KEYWORDS = [
 RECENCY_WINDOW_HOURS = 72
 SEEN_WINDOW_DAYS = 14
 MIN_LEADS = 10
-QUERIES_PER_RUN = 20
+QUERIES_PER_RUN = 10
 # Measured empirically: reddit.com/search.rss rate-limits far more aggressively than the
 # per-subreddit new.rss endpoint used in reddit_engagement.py (which tolerates a 6s pause).
-# Repeated single curl requests spaced 6-25s apart still hit 429 more often than not; only
-# ~45-60s gaps consistently returned 200. Treat this as a slow-refilling token bucket, not
-# a flat per-request cooldown.
-SEARCH_QUERY_PAUSE_SECONDS = 40
+# A single request exhausts the budget (x-ratelimit-remaining: 0.0) with ~49s reset; even
+# 40s pauses still hit 429 on consecutive queries. Use 55s to reliably stay under the
+# bucket refill and fewer queries per run to keep total runtime reasonable (~9 min).
+SEARCH_QUERY_PAUSE_SECONDS = 55
 
 _QUERY_STATE_FILE = Path(__file__).parent / "data" / "lead_query_state.json"
 _SEEN_LEADS_FILE = Path(__file__).parent / "seen_reddit_leads.json"
@@ -325,7 +325,7 @@ def fetch_search_new(query: str, limit: int = 25) -> list[dict]:
         try:
             resp = requests.get(
                 "https://www.reddit.com/search.rss",
-                params={"q": f'"{query}"', "sort": "new", "limit": limit},
+                params={"q": query, "sort": "new", "limit": limit},
                 headers=HEADERS,
                 timeout=10,
             )
