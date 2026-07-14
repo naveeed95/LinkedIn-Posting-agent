@@ -150,8 +150,14 @@ _STRONG_HIRE_PATTERNS = re.compile(
 # make X" also commonly means "I want an existing product", not "I want to hire
 # someone" (e.g. "looking for an app that tracks my steps"). Only counts when paired
 # with a target noun that clearly means a person/service, not a bare product noun.
+#
+# The trailing `(a|an)` groups here are mandatory, not optional — an earlier `(a|an)?`
+# on "looking for" made the group match zero-width, so the pattern matched bare
+# "looking for " with nothing after it, firing on any "looking for feedback/advice/..."
+# post regardless of what followed. Confirmed empirically: unrelated posts like
+# "Looking for feedback on my new app I built as a self-taught developer" matched.
 _WEAK_HIRE_PATTERNS = re.compile(
-    r"need (a|an) |looking for (a|an)?|"
+    r"need (a|an) |looking for (a|an) |"
     r"can (anyone|someone) (help|build|make|recommend|suggest)|"
     r"does anyone know (a|of)|any recommendations? for a|"
     r"where (can|do) i find (a|an)|help me find (a|an)|"
@@ -164,6 +170,11 @@ _HIRE_TARGET_PATTERN = re.compile(
     r"someone (who can|to) (build|code|develop|make)",
     re.IGNORECASE,
 )
+
+# How close a target noun (developer/engineer/etc.) must appear after a weak-hire
+# phrase to count. Without this, "looking for a X" anywhere plus "developer"
+# anywhere else in a long post body (unrelated to each other) counted as a match.
+_PROXIMITY_WINDOW = 60
 
 _FOR_HIRE_PATTERNS = re.compile(
     r"\[for hire\]|available for hire|i'?m a (developer|programmer|freelancer)|"
@@ -203,8 +214,13 @@ def _is_hiring_lead(post: dict) -> bool:
         return True
     # Weak hire-language ("looking for an app") is common product-shopping phrasing
     # ("looking for an app that tracks macros") that isn't a hiring lead at all —
-    # only accept it when paired with a person/service noun (developer, agency, etc).
-    return bool(_WEAK_HIRE_PATTERNS.search(text)) and bool(_HIRE_TARGET_PATTERN.search(text))
+    # only accept it when a person/service noun (developer, agency, etc.) appears
+    # shortly after the hire phrase, not merely anywhere else in the post.
+    weak_match = _WEAK_HIRE_PATTERNS.search(text)
+    if not weak_match:
+        return False
+    window = text[weak_match.start():weak_match.end() + _PROXIMITY_WINDOW]
+    return bool(_HIRE_TARGET_PATTERN.search(window))
 
 
 # ── Query rotation (deterministic template x keyword combos, no LLM) ───────────

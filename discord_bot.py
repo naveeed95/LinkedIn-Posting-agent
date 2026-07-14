@@ -88,18 +88,23 @@ def _send_long_message(channel_id: str, content: str) -> str | None:
     if len(content) <= 1990:
         return _send_message(channel_id, content)
 
+    # Leave headroom for the "_(part i/n)_\n" prefix added below (worst case
+    # double-digit/double-digit ~= 16 chars) so no chunk can cross Discord's
+    # hard 2000-char cap after the prefix is added.
+    MAX_CHUNK = 1970
+
     chunks: list[str] = []
     remaining = content
     while remaining:
-        if len(remaining) <= 1990:
+        if len(remaining) <= MAX_CHUNK:
             chunks.append(remaining)
             break
         # Prefer to break at a divider line if possible
-        cut = remaining.rfind("━━━", 0, 1990)
+        cut = remaining.rfind("━━━", 0, MAX_CHUNK)
         if cut <= 100:
-            cut = remaining.rfind("\n", 0, 1990)
+            cut = remaining.rfind("\n", 0, MAX_CHUNK)
         if cut <= 100:
-            cut = 1990
+            cut = MAX_CHUNK
         chunks.append(remaining[:cut])
         remaining = remaining[cut:].lstrip("\n")
 
