@@ -229,5 +229,12 @@
     "source_url": "https://www.theverge.com/tech/964843/apple-openai-lawsuit-wildest-claims",
     "post_text": "Apple just sued OpenAI.\n\nHere's what happens when your AI vendor asks for your trade secrets to \"improve the model.\"\n\nThe lawsuit alleges OpenAI's chief hardware officer and a technical staff member — both ex-Apple employees — funneled confidential project details back to OpenAI.\n\nOne former Apple engineer allegedly kept a co-worker updated on Apple's engineering specs, vendor relationships, and internal hardware plans for months after joining OpenAI.\n\nThis isn't about one bad actor.\n\nIt's about the structural risk of feeding your proprietary data into any third-party AI system.\n\nEvery time you paste a client list, a pricing model, or a product roadmap into a chatbot, you're trusting that system's security and its people.\n\nThe math is simple: if your data is valuable enough to steal, someone will try.\n\nThe reframe: you don't need better AI — you need AI that can't talk.\n\nWhat's one piece of your business data you'd never want your competitors to see — and how confident are you that your current tools keep it safe?\n\n#AISecurity #DataPrivacy",
     "posted_at": "2026-07-14T10:11:19.684898"
+  },
+  {
+    "title": "Fleet Fuel Savings Case Study | 31% Reduction & $4.8M ROI",
+    "topic_text": "Fleet Fuel Savings Case Study | 31% Reduction & $4.8M ROI — A real fleet operator cut fuel costs by 31% using AI route optimization and driver coaching — here's the exact playbook any SMB with vehicles can copy.",
+    "source_url": "https://fleetrabbit.com/case-study/post/fleet-fuel-savings-31-percent-600-trucks",
+    "post_text": "A Midwest fleet with 600 trucks spent $4.8M less on fuel last year\n\nNot a typo. Here's how they did it without buying new vehicles.\n\nThey used AI to pick smarter routes in real time.\nThey cut idle time by 14% with driver coaching.\nThey combined GPS data with fuel card transactions.\n\nThe formula they used: (total miles ÷ current MPG) × fuel price × 0.31 = your savings\n\nTheir secret was treating fuel data as a live signal, not a monthly report.\nEvery driver saw their score. Every route was optimized before the engine started.\n\nThe reframe: Fuel isn't a fixed cost — it's a behavior you can optimize.\n\nWhat's one fuel-wasting habit in your fleet you've accepted as \"normal\" — and what would 31% savings mean for your bottom line this year?\n\n#FleetManagement #AIlogistics",
+    "posted_at": "2026-07-15T10:04:42.168134"
   }
 ]
