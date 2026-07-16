@@ -236,5 +236,12 @@
     "source_url": "https://fleetrabbit.com/case-study/post/fleet-fuel-savings-31-percent-600-trucks",
     "post_text": "A Midwest fleet with 600 trucks spent $4.8M less on fuel last year\n\nNot a typo. Here's how they did it without buying new vehicles.\n\nThey used AI to pick smarter routes in real time.\nThey cut idle time by 14% with driver coaching.\nThey combined GPS data with fuel card transactions.\n\nThe formula they used: (total miles ÷ current MPG) × fuel price × 0.31 = your savings\n\nTheir secret was treating fuel data as a live signal, not a monthly report.\nEvery driver saw their score. Every route was optimized before the engine started.\n\nThe reframe: Fuel isn't a fixed cost — it's a behavior you can optimize.\n\nWhat's one fuel-wasting habit in your fleet you've accepted as \"normal\" — and what would 31% savings mean for your bottom line this year?\n\n#FleetManagement #AIlogistics",
     "posted_at": "2026-07-15T10:04:42.168134"
+  },
+  {
+    "title": "Microsoft is reportedly training salespeople to talk down OpenAI and Anthropic",
+    "topic_text": "Microsoft is reportedly training salespeople to talk down OpenAI and Anthropic — Microsoft's sales push reveals that the real AI cost war isn't about features — it's about vendor lock-in, and SMBs are the ones who'll pay the price if they don't shop around.",
+    "source_url": "https://techcrunch.com/2026/07/15/microsoft-is-reportedly-training-salespeople-to-talk-down-openai-and-anthropic/",
+    "post_text": "Microsoft is training salespeople to badmouth OpenAI and Anthropic\n\nNot because their AI is better. Because they want you locked in.\n\nIf you use Microsoft 365, you're the target.\n\nTheir pitch to sales teams is simple: steer customers away from competitors and toward their own models.\n\nFor small businesses, this is dangerous.\n\nNo one vendor should own your entire AI stack.\n\nHere's the math that matters: switching costs grow 3x faster than software costs.\n\nA $28/month tool today could cost you $15,000 in lost time and migration fees to leave it later.\n\nThe real AI cost war is about control, not capability.\n\nWhat's one tool or vendor you've stayed with longer than you should have — and what finally made you leave?",
+    "posted_at": "2026-07-16T11:01:43.562264"
   }
 ]
