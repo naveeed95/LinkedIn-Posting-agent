@@ -2,21 +2,18 @@
 Sitewide Reddit scan for hiring-intent leads — people explicitly looking to pay/hire
 someone for tech work of any kind (web dev, apps, automation, AI, chatbots, etc.).
 
-Separate from reddit_engagement.py, which scans a curated subreddit list for genuine
-advice-seeking threads and drafts non-promotional replies. This script instead searches
-all of Reddit (Reddit's sitewide search RSS, not a fixed sub list) for a different
-intent signal — hiring/outsourcing, not advice-seeking — and does NOT draft a reply or
-mention the business anywhere. It only surfaces raw matching posts to Discord; a human
-reads them and decides manually whether/how to respond. No LLM call in this script.
+This script searches all of Reddit (Reddit's sitewide search RSS, not a fixed sub list)
+for a hiring/outsourcing intent signal and does NOT draft a reply or mention the business
+anywhere. It only surfaces raw matching posts to Discord; a human reads them and decides
+manually whether/how to respond. No LLM call in this script.
 
-Reddit's unauthenticated .json endpoints return 403 platform-wide (see reddit_engagement.py's
-module note) — this uses the sitewide search Atom feed (reddit.com/search.rss) instead,
-same RSS-only strategy, confirmed working via manual curl during design.
+Reddit's unauthenticated .json endpoints return 403 platform-wide — this uses the sitewide
+search Atom feed (reddit.com/search.rss) instead, confirmed working via manual curl during
+design.
 
 Run: python reddit_leads.py
      python reddit_leads.py --dry-run     (print candidates, skip Discord + seen-set save)
-     python reddit_leads.py --fetch-only  (candidates only, same as --dry-run — CLI parity
-                                            with reddit_engagement.py)
+     python reddit_leads.py --fetch-only  (candidates only, same as --dry-run)
 """
 
 import calendar
@@ -94,8 +91,8 @@ RECENCY_WINDOW_HOURS = 72
 SEEN_WINDOW_DAYS = 14
 MIN_LEADS = 10
 QUERIES_PER_RUN = 10
-# Measured empirically: reddit.com/search.rss rate-limits far more aggressively than the
-# per-subreddit new.rss endpoint used in reddit_engagement.py (which tolerates a 6s pause).
+# Measured empirically: reddit.com/search.rss rate-limits far more aggressively than a
+# per-subreddit new.rss endpoint (which tolerates a 6s pause) would.
 # A single request exhausts the budget (x-ratelimit-remaining: 0.0) with ~49s reset; even
 # 40s pauses still hit 429 on consecutive queries. Use 55s to reliably stay under the
 # bucket refill and fewer queries per run to keep total runtime reasonable (~9 min).
@@ -105,9 +102,7 @@ _QUERY_STATE_FILE = Path(__file__).parent / "data" / "lead_query_state.json"
 _SEEN_LEADS_FILE = Path(__file__).parent / "seen_reddit_leads.json"
 
 
-# ── Sanitization (untrusted external text — same injection-defense pattern as
-# reddit_engagement._sanitize_thread_text, kept as a local copy per this repo's
-# convention of each fire-and-forget script owning its own constants) ──────────
+# ── Sanitization (untrusted external text) ─────────────────────────────────────
 
 _INJECTION_PREFIXES = re.compile(
     r"^(system:|new task:|new instructions:|your task is now|act as|from now on|"
@@ -267,7 +262,7 @@ def next_query_batch(n: int = QUERIES_PER_RUN) -> list[str]:
     return batch
 
 
-# ── Seen-set dedup (own file — kept separate from reddit_engagement's) ────────
+# ── Seen-set dedup ──────────────────────────────────────────────────────────────
 
 def _load_seen_leads() -> set[str]:
     if not _SEEN_LEADS_FILE.exists():

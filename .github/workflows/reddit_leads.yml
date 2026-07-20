@@ -2,7 +2,7 @@ name: Reddit Leads Scan
 
 on:
   schedule:
-    - cron: '0 4,12,20 * * *'  # every 8 hours, staggered from reddit_engagement.yml (0 */8 * * *)
+    - cron: '0 4,12,20 * * *'  # every 8 hours
   workflow_dispatch:
     inputs:
       dry_run:
