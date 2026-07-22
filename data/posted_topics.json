@@ -278,5 +278,12 @@
     "source_url": "https://www.groovyweb.co/blog/ai-roi-case-studies-real-results",
     "post_text": "70% of small businesses are overpaying for AI they don't need\n\nHere's the exact formula to know if an automation is worth building\n\nA dental practice with 3 dentists had a 22% no-show rate\nCosting them $120,000 in lost production every year\nFront desk spent 3 hours daily on manual reminders\n\nWe built a patient scheduling bot in one day\nNo-shows dropped 40%\nAnnual revenue increased $85,000\n\nHere's the ROI formula they used:\nTime saved (hrs/week) x $hourly rate x 52 = real annual cost of manual work\nIf automation costs less than 3 months of that manual cost, build it\n\nThe math works the same for your business\nThe question is whether you're looking at the right numbers\n\nWhat's the one manual process in your business you've been meaning to automate for months — and what's actually stopped you from pulling the trigger?\n\n#AI #Automation",
     "posted_at": "2026-07-21T10:18:48.942720"
+  },
+  {
+    "title": "Google launches a cheaper alternative to large AI security models like Mythos",
+    "topic_text": "Google launches a cheaper alternative to large AI security models like Mythos — Google's new Gemini 3.6 Flash security model gives small businesses enterprise-grade vulnerability detection at a fraction of the cost of tools like Mythos.",
+    "source_url": "https://www.theverge.com/tech/968572/google-gemini-flash-cyber-ai-security-model",
+    "post_text": "Your current security setup is overkill.\n\nYoure paying for enterprise tools built for companies 100x your size.\n\nGoogle just changed the math.\n\nThey launched Gemini 3.5 Flash Cyber.\n\nA security model that finds and patches vulnerabilities.\n\nAt a fraction of the cost of tools like Mythos.\n\nThe old choice was either expensive or insecure.\n\nThat no longer exists.\n\nHow many hours a week does your team spend on manual security checks or patching — and what would you do with that time instead?\n\n#GoogleAI #CyberSecurity",
+    "posted_at": "2026-07-22T12:01:49.147512"
   }
 ]
