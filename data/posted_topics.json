@@ -285,5 +285,12 @@
     "source_url": "https://www.theverge.com/tech/968572/google-gemini-flash-cyber-ai-security-model",
     "post_text": "Your current security setup is overkill.\n\nYoure paying for enterprise tools built for companies 100x your size.\n\nGoogle just changed the math.\n\nThey launched Gemini 3.5 Flash Cyber.\n\nA security model that finds and patches vulnerabilities.\n\nAt a fraction of the cost of tools like Mythos.\n\nThe old choice was either expensive or insecure.\n\nThat no longer exists.\n\nHow many hours a week does your team spend on manual security checks or patching — and what would you do with that time instead?\n\n#GoogleAI #CyberSecurity",
     "posted_at": "2026-07-22T12:01:49.147512"
+  },
+  {
+    "title": "The AI compute gap: Enterprises are buying infrastructure faster than they can measure what it costs",
+    "topic_text": "The AI compute gap: Enterprises are buying infrastructure faster than they can measure what it costs — Small businesses can avoid the costly AI infrastructure trap by using no-code tools and pay-as-you-go services instead of buying hardware they don't need.",
+    "source_url": "https://venturebeat.com/ai/the-ai-compute-gap-enterprises-are-buying-infrastructure-faster-than-they-can-measure-what-it-costs",
+    "post_text": "Enterprises are buying AI hardware faster than they can track what it costs\n\nA new study found something most small businesses won't hear about\n\n107 enterprises surveyed. Most run AI on hyperscaler clouds.\n\nBut here's the ugly truth they discovered\n\n20% don't even know their memory is becoming the bottleneck\n\nThey're spending millions on GPUs while their measurement tools are still playing catch-up\n\nMeanwhile, small teams are running production AI for less than $200 a month\n\nNo GPU clusters. No infrastructure nightmares. Just API calls and no-code builders.\n\nThe gap isn't compute power. It's knowing what you actually need.\n\nWhat's one manual process in your business you'd automate tomorrow if setup took under an hour — and what's held you back from trying it?\n\n#AIAutomation",
+    "posted_at": "2026-07-23T12:14:18.421549"
   }
 ]
