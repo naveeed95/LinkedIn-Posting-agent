@@ -292,5 +292,12 @@
     "source_url": "https://venturebeat.com/ai/the-ai-compute-gap-enterprises-are-buying-infrastructure-faster-than-they-can-measure-what-it-costs",
     "post_text": "Enterprises are buying AI hardware faster than they can track what it costs\n\nA new study found something most small businesses won't hear about\n\n107 enterprises surveyed. Most run AI on hyperscaler clouds.\n\nBut here's the ugly truth they discovered\n\n20% don't even know their memory is becoming the bottleneck\n\nThey're spending millions on GPUs while their measurement tools are still playing catch-up\n\nMeanwhile, small teams are running production AI for less than $200 a month\n\nNo GPU clusters. No infrastructure nightmares. Just API calls and no-code builders.\n\nThe gap isn't compute power. It's knowing what you actually need.\n\nWhat's one manual process in your business you'd automate tomorrow if setup took under an hour — and what's held you back from trying it?\n\n#AIAutomation",
     "posted_at": "2026-07-23T12:14:18.421549"
+  },
+  {
+    "title": "Runway launches AI model router as generative media gets crowded",
+    "topic_text": "Runway launches AI model router as generative media gets crowded — Most SMBs waste money on the wrong AI model for each task — Runway's Media Router automatically picks the cheapest, fastest model for your request, saving both time and cash.",
+    "source_url": "https://techcrunch.com/2026/07/23/runway-bets-on-ai-model-routing-as-generative-media-gets-crowded/",
+    "post_text": "Most businesses pay for the wrong AI model\n\nAnd here's why that's quietly burning through your budget\n\nRunway just launched Media Router — the first router for video, audio, and image AI models.\n\nIt automatically picks the cheapest, fastest model for each task.\n\nNo more paying for a Ferrari when a bicycle will do.\n\nHere's what that means for your bottom line:\n\n• One API replaces 5+ separate provider contracts\n• The router chooses between Google, ByteDance, Alibaba models\n• It's a single billing relationship instead of a patchwork of invoices\n\nThe next AI winner won't build the best model.\n\nIt'll build the platform that chooses the best one for the job.\n\nSaving money on AI isn't about using less. It's about using the right tool.\n\nWhat's the one manual creative task in your business you'd automate first — and what's stopped you from doing it so far?\n\n#AI #Efficiency",
+    "posted_at": "2026-07-24T10:10:46.694420"
   }
 ]
