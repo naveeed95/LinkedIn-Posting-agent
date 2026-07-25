@@ -2,7 +2,16 @@
 Multi-provider LLM router. Each model is a named entity.
 
 Providers used:
-  - DeepSeek     (deepseek-chat) — set DEEPSEEK_API_KEY
+  - DeepSeek     (deepseek-v4-pro / deepseek-v4-flash) — set DEEPSEEK_API_KEY
+                 NOTE: DeepSeek V4 models are *reasoning* models. Left on, they
+                 spend a HIGHLY variable number of completion tokens (observed 40
+                 to 2500+ for the SAME prompt) on hidden reasoning before emitting
+                 content, so any fixed max_tokens can be swallowed whole, returning
+                 "". _dispatch() sends extra_body={"thinking":{"type":"disabled"}}
+                 to turn reasoning OFF for every call — this restores the old
+                 non-reasoning deepseek-chat behaviour (full budget to output).
+                 Do NOT remove that flag or the tight-budget calls (scoring,
+                 topic-pick) will intermittently return empty content again.
   - Groq         (Llama 3.3 70B, Llama 3.1 8B)  — set GROQ_API_KEY (disabled)
 Public API:
   call_model(model_key, prompt, system, max_tokens) -> str
@@ -75,13 +84,13 @@ MODELS = {
     "deepseek-pro": {
         "display":     "DeepSeek Chat",
         "provider":    "deepseek",
-        "model_id":    "deepseek-chat",
+        "model_id":    "deepseek-v4-pro",
         "temperature": 0.8,
     },
     "deepseek-flash": {
         "display":     "DeepSeek Chat (fast)",
         "provider":    "deepseek",
-        "model_id":    "deepseek-chat",
+        "model_id":    "deepseek-v4-flash",
         "temperature": 0.3,
     },
 }
@@ -273,14 +282,22 @@ def _dispatch(
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
+    # DeepSeek V4 models (v4-pro / v4-flash) are *reasoning* models: left on,
+    # they spend a highly variable number of completion tokens (observed 40 to
+    # 2500+ for the SAME prompt) on hidden reasoning BEFORE emitting content, so
+    # any fixed max_tokens can be silently swallowed whole, returning "". We do
+    # not want chain-of-thought here at all — disabling thinking restores the old
+    # non-reasoning deepseek-chat behaviour where the full budget goes to output.
     response = client.chat.completions.create(
         model       = model_id,
         messages    = messages,
         max_tokens  = max_tokens,
         temperature = temperature,
         timeout     = 60,
+        extra_body  = {"thinking": {"type": "disabled"}},
     )
-    return response.choices[0].message.content.strip()
+    content = response.choices[0].message.content
+    return (content or "").strip()
 
 
 # ── Convenience: model display lookup ─────────────────────────────────────────
