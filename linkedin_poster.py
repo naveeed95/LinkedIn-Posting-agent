@@ -143,6 +143,22 @@ def get_recent_org_posts(days: int = 30) -> list[dict]:
             if text:
                 out.append({"text": text, "days_ago": max(0.0, (now_ms - created_ms) / 86400000)})
         return out
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else None
+        if status == 403:
+            # Expected, not a breakage: this app has WRITE products
+            # (w_organization_social + rw_organization_admin) but NOT the
+            # post-READ product (Community Management API / r_organization_social),
+            # which requires a LinkedIn app review. Every post-read finder
+            # (ugcPosts / shares / rest posts) returns 403 ACCESS_DENIED. The live
+            # ground-truth dedup layer is simply unavailable; durable dedup via
+            # data/posted_topics.json (+ semantic filter) is unaffected. Kept as a
+            # no-op call so it self-heals if the read product is ever granted.
+            log.info("get_recent_org_posts: LinkedIn post-read not permitted for this app "
+                     "(403) — skipping live-org dedup layer; posted_topics.json dedup still active")
+        else:
+            log.warning(f"get_recent_org_posts failed: {e}")
+        return []
     except Exception as e:
         log.warning(f"get_recent_org_posts failed: {e}")
         return []

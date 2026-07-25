@@ -19,6 +19,7 @@ Optional (API key required):
 All sources merged and deduplicated before returning.
 """
 
+import calendar
 import os
 import re
 import time
@@ -111,6 +112,50 @@ def _is_ai_relevant(text: str) -> bool:
     return bool(re.search(r'\bai\b', lower))
 
 
+# ── Reddit RSS helpers ─────────────────────────────────────────────────────────
+# Reddit 403s ALL unauthenticated .json endpoints (a global block since ~2024,
+# reproduced even from residential IPs — not just datacenter/CI). The .rss/.atom
+# feeds still serve 200, so every Reddit read here goes through RSS + feedparser.
+# Trade-off: RSS carries no upvote score, so points=0 for Reddit items — fine,
+# since points only feed a log2 tie-breaker in the research scorer (virality is a
+# tie-breaker, not a ranker). feedparser.parse(url) uses its own UA which Reddit
+# blocks, so we fetch bytes with our browser UA first, then parse resp.content.
+
+def _fetch_reddit_rss(url: str, params: dict, retries: int = 1) -> list:
+    """GET a Reddit RSS feed with a browser UA and return feedparser entries.
+    Retries once on 429 (RSS refills slowly); returns [] on any other failure."""
+    for attempt in range(retries + 1):
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=10)
+        if resp.ok:
+            return feedparser.parse(resp.content).entries
+        if resp.status_code == 429 and attempt < retries:
+            time.sleep(5)
+            continue
+        # 429 is expected/transient on Reddit RSS (slow-refilling token bucket) —
+        # log it quietly; only hard failures (403/404/5xx) warrant a warning.
+        if resp.status_code == 429:
+            log.debug(f"Reddit RSS {url} rate-limited (429)")
+        else:
+            log.warning(f"Reddit RSS {url} failed ({resp.status_code})")
+        return []
+    return []
+
+
+def _reddit_entry_to_topic(entry) -> tuple[str, str, str, str]:
+    """Extract (title, link, description, published_utc_str) from a Reddit RSS entry."""
+    title = _strip_html(entry.get("title", "")).strip()
+    link  = entry.get("link", "")
+    if entry.get("content"):
+        raw_html = entry["content"][0].get("value", "")
+    else:
+        raw_html = entry.get("summary", "")
+    desc = _strip_html(raw_html)[:DESCRIPTION_MAX_CHARS]
+    pub = ""
+    if entry.get("published_parsed"):
+        pub = str(calendar.timegm(entry["published_parsed"]))
+    return title, link, desc, pub
+
+
 # ── RSS fetchers ───────────────────────────────────────────────────────────────
 
 def fetch_rss_feeds(max_per_feed: int = 8) -> list[dict]:
@@ -141,32 +186,20 @@ def fetch_rss_feeds(max_per_feed: int = 8) -> list[dict]:
 
 def fetch_reddit(max_per_sub: int = 10) -> list[dict]:
     items = []
-    reddit_headers = {**HEADERS, "Accept": "application/json"}
     for sub in REDDIT_SUBS:
         try:
-            resp = requests.get(
-                f"https://www.reddit.com/r/{sub}/top.json",
-                params={"t": "week", "limit": max_per_sub},
-                headers=reddit_headers,
-                timeout=10,
+            entries = _fetch_reddit_rss(
+                f"https://www.reddit.com/r/{sub}/top.rss",
+                {"t": "week", "limit": max_per_sub},
             )
-            if not resp.ok:
-                log.warning(f"Reddit r/{sub} failed ({resp.status_code})")
-                continue
-            posts = resp.json().get("data", {}).get("children", [])
             count = 0
-            for post in posts:
-                d = post.get("data", {})
-                title = d.get("title", "").strip()
-                url   = d.get("url", "") or f"https://reddit.com{d.get('permalink', '')}"
-                score = d.get("score", 0)
-                desc  = _strip_html(d.get("selftext", ""))[:DESCRIPTION_MAX_CHARS]
-                pub = str(d.get("created_utc", ""))
+            for entry in entries:
+                title, url, desc, pub = _reddit_entry_to_topic(entry)
                 if title and _is_ai_relevant(title):
-                    items.append(_make_topic(title, url, f"Reddit r/{sub}", desc, points=score, published_date=pub))
+                    items.append(_make_topic(title, url, f"Reddit r/{sub}", desc, points=0, published_date=pub))
                     count += 1
             log.info(f"Reddit r/{sub}: {count} items")
-            time.sleep(0.5)  # be polite to Reddit
+            time.sleep(3.0)  # RSS refills slowly — space requests to avoid 429
         except Exception as e:
             log.warning(f"Reddit r/{sub} error: {e}")
     return items
@@ -413,30 +446,19 @@ REDDIT_AI_SEARCH_QUERIES = [
 
 def fetch_reddit_ai_search(max_per_query: int = 5) -> list[dict]:
     items = []
-    reddit_headers = {**HEADERS, "Accept": "application/json"}
     for query in REDDIT_AI_SEARCH_QUERIES:
         try:
-            resp = requests.get(
-                "https://www.reddit.com/search.json",
-                params={"q": query, "sort": "top", "t": "week", "limit": max_per_query},
-                headers=reddit_headers,
-                timeout=10,
+            entries = _fetch_reddit_rss(
+                "https://www.reddit.com/search.rss",
+                {"q": query, "sort": "top", "t": "week", "limit": max_per_query},
             )
-            if not resp.ok:
-                continue
-            for post in resp.json().get("data", {}).get("children", []):
-                d     = post.get("data", {})
-                title = d.get("title", "").strip()
-                url   = d.get("url", "") or f"https://reddit.com{d.get('permalink', '')}"
-                score = d.get("score", 0)
-                desc  = _strip_html(d.get("selftext", ""))[:DESCRIPTION_MAX_CHARS]
+            for entry in entries[:max_per_query]:
+                title, url, desc, _ = _reddit_entry_to_topic(entry)
                 if title and _is_ai_relevant(title):
-                    items.append(_make_topic(title, url, "Reddit Search", desc,
-                                             points=score,
-                                             published_date=str(d.get("created_utc", ""))))
+                    items.append(_make_topic(title, url, "Reddit Search", desc, points=0))
         except Exception as e:
             log.warning(f"Reddit AI search '{query}' failed: {e}")
-        time.sleep(0.3)
+        time.sleep(2.0)  # search.rss rate-limits harder than sub feeds
     log.info(f"Reddit broad AI search: {len(items)} items")
     return items
 
@@ -527,21 +549,16 @@ def fetch_deep_topic_research(topic_title: str, focus_keywords: list[str]) -> li
     except Exception as e:
         log.warning(f"Deep HN search failed: {e}")
 
-    # Targeted Reddit search
+    # Targeted Reddit search (RSS — .json is 403-blocked, see _fetch_reddit_rss)
     try:
-        resp = requests.get(
-            "https://www.reddit.com/search.json",
-            params={"q": topic_title, "sort": "top", "t": "week", "limit": 5},
-            headers={**HEADERS, "Accept": "application/json"},
-            timeout=10,
+        entries = _fetch_reddit_rss(
+            "https://www.reddit.com/search.rss",
+            {"q": topic_title, "sort": "top", "t": "week", "limit": 5},
         )
-        if resp.ok:
-            for post in resp.json().get("data", {}).get("children", []):
-                d     = post.get("data", {})
-                title = d.get("title", "").strip()
-                url   = d.get("url", "") or f"https://reddit.com{d.get('permalink', '')}"
-                if title and _is_ai_relevant(title):
-                    items.append(_make_topic(title, url, "Reddit Search", points=d.get("score", 0)))
+        for entry in entries[:5]:
+            title, url, _, _ = _reddit_entry_to_topic(entry)
+            if title and _is_ai_relevant(title):
+                items.append(_make_topic(title, url, "Reddit Search", points=0))
     except Exception as e:
         log.warning(f"Reddit search failed: {e}")
 
