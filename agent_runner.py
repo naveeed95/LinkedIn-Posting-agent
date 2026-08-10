@@ -22,6 +22,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     """Direct posting pipeline. Called from cmd_auto() in run.py."""
 
     import topic_log
+    import run_log
     from content_generator import (
         adapt_post_for_reddit,
         engagement_scorer,
@@ -47,6 +48,23 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     today = date.fromisoformat(target_date) if target_date else date.today()
 
     MAX_TOPIC_SWITCHES = 1  # how many times "new topic" can be requested per run
+
+    # Durable, git-committed event stream for this run. Written incrementally so
+    # a crash still leaves everything up to the crash on disk — see run_log.py.
+    run_id = run_log.new_run_id("daily_post")
+    started_at = datetime.now()
+    run_log.record(
+        run_id, "run_start",
+        date=today.isoformat(), day=today.strftime("%A"), preview=preview,
+    )
+
+    def _end_run(status: str, **fields) -> None:
+        run_log.record(
+            run_id, "run_end",
+            status=status,
+            duration_s=round((datetime.now() - started_at).total_seconds(), 1),
+            **fields,
+        )
 
     state: dict = {
         "topic": None,
@@ -154,6 +172,15 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         state["topic_pool"] = topics[:30]
         state["recent_titles"] = recent_titles
         state["tried_titles"] = {topic.get("title", "")}
+        run_log.record(
+            run_id, "topic_pick",
+            title=topic.get("title", ""),
+            angle=topic.get("angle", ""),
+            source_url=topic.get("source_url", ""),
+            pool_size=len(topics),
+            live_posts_merged=len(live_posts),
+            all_titles_known=len(all_posted_titles),
+        )
         return {
             "status": "ok",
             "day": state["day"],
@@ -251,6 +278,15 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
             v = variants[0]
             state["previous_posts"].append(v["text"])
+            run_log.record(
+                run_id, "generate",
+                attempt=state["generate_count"],
+                model=v["model_key"],
+                char_count=len(v["text"]),
+                hint=hint,
+                topic=state["topic"].get("title", "") if state["topic"] else "",
+                post_text=v["text"],
+            )
             return {
                 "post_text": v["text"],
                 "model_key": v["model_key"],
@@ -283,6 +319,12 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             is_dup, sim = False, 0.0
 
         if is_dup:
+            run_log.record(
+                run_id, "score",
+                score=score, threshold=threshold, verdict="duplicate",
+                ready_to_send=False, similarity=round(sim, 3),
+                attempt=state["generate_count"],
+            )
             return {
                 "score": score,
                 "threshold": threshold,
@@ -293,6 +335,15 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                           "and examples.",
             }
 
+        run_log.record(
+            run_id, "score",
+            score=score, threshold=threshold,
+            verdict="excellent" if score >= threshold else "weak",
+            ready_to_send=score >= threshold,
+            recent_avg=recent_avg,
+            attempt=state["generate_count"],
+            advice=advice if score < threshold else "",
+        )
         return {
             "score": score,
             "threshold": threshold,
@@ -351,6 +402,14 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         # of the workflow's time budget.
         timeout = 120 if state["topic_switches"] == 0 else 60
         decision = wait_for_approval(msg_id, timeout_minutes=timeout, num_variants=1)
+        run_log.record(
+            run_id, "approval",
+            action=decision.get("action", ""),
+            hint=decision.get("hint", ""),
+            wait_minutes=timeout,
+            score=score,
+            auto_published=decision.get("action") == "timeout",
+        )
         return {
             "action": decision.get("action"),
             "hint": decision.get("hint", ""),
@@ -414,9 +473,20 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
 
             send_posted_confirmation(result["url"], 1, post_text)
             state["done"] = True
+            run_log.record(
+                run_id, "publish",
+                status="published",
+                urn=result["urn"], url=result["url"],
+                topic=topic.get("title", ""),
+                chosen_model=chosen_model,
+                char_count=len(post_text),
+                post_text=post_text,
+            )
             _log("INFO", f"Live: {result['url']}")
             return {"status": "published", "url": result["url"], "urn": result["urn"]}
         except Exception as e:
+            run_log.record(run_id, "error", where="publish", message=str(e))
+            run_log.record(run_id, "publish", status="error", topic=topic.get("title", ""))
             return {"status": "error", "error": str(e)}
 
     def tool_skip_today(reason: str = "") -> dict:
@@ -425,6 +495,7 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         except Exception as e:
             log_agent.warning(f"notify_timeout failed: {e}")
         state["done"] = True
+        run_log.record(run_id, "skip", reason=reason, topic=(state["topic"] or {}).get("title", ""))
         _log("INFO", f"Skipped: {reason}")
         return {"status": "skipped", "reason": reason}
 
@@ -437,14 +508,17 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     _log("INFO", f"Topic status: {topic_result['status']}")
     if topic_result["status"] == "already_posted":
         _log("INFO", "Already posted today — skipping.")
+        _end_run("already_posted")
         return
     if topic_result["status"] == "no_topics":
         _log("ERROR", topic_result.get("message", "No topics found"))
+        run_log.record(run_id, "error", where="research", message="no topics from any source")
         try:
             from discord_bot import notify_workflow_failure
             notify_workflow_failure("⚠️ No trending topics found — research sources may be down.")
         except Exception:
             pass
+        _end_run("no_topics")
         return
 
     _log("INFO", f"Topic: {topic_result['topic_title']}")
@@ -456,10 +530,12 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
     # 3. Deep research on the chosen topic
     research_result = tool_research_topic()
     _log("INFO", f"Research: {research_result.get('sources_found', 0)} sources")
+    run_log.record(run_id, "research", sources_found=research_result.get("sources_found", 0))
 
     # 4–5. Generate + score (up to 3 attempts, stop early if score meets threshold)
     post_text, score = _generate_and_score()
     if post_text is None:
+        _end_run("generation_failed")
         return
 
     # 6–7. Approval + publish (loop handles regenerate-after-approval)
@@ -468,19 +544,23 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
         action = decision.get("action", "skip")
 
         if action == "post":
-            tool_publish_post(post_text)
+            result = tool_publish_post(post_text)
+            _end_run(result.get("status", "unknown"), url=result.get("url", ""))
             return
 
         elif action == "edit":
             custom = decision.get("custom_text", "").strip()
-            tool_publish_post(custom or post_text, chosen_model="human-edit")
+            result = tool_publish_post(custom or post_text, chosen_model="human-edit")
+            _end_run(result.get("status", "unknown"), url=result.get("url", ""), human_edited=True)
             return
 
         elif action == "regenerate" and state["generate_count"] < 3:
             gen = tool_generate_post(hint=decision.get("hint", ""))
             if "error" in gen:
                 _log("ERROR", f"Regeneration failed: {gen['error']}")
+                run_log.record(run_id, "error", where="regenerate", message=gen["error"])
                 tool_skip_today(f"Regeneration failed: {gen['error']}")
+                _end_run("regeneration_failed")
                 return
             post_text = gen["post_text"]
             scored = tool_score_post(post_text)
@@ -495,9 +575,11 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             state["topic_switches"] += 1
             _log("INFO", f"New topic: {pick['topic_title']}")
             _log("INFO", f"Angle: {pick['angle']}")
+            run_log.record(run_id, "topic_switch", title=pick["topic_title"], angle=pick["angle"])
             tool_research_topic()
             post_text, score = _generate_and_score()
             if post_text is None:
+                _end_run("generation_failed_after_switch")
                 return
 
         elif action == "timeout":
@@ -506,7 +588,8 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
                 notify_auto_post(state["day"], state["date"])
             except Exception:
                 pass
-            tool_publish_post(post_text)
+            result = tool_publish_post(post_text)
+            _end_run(result.get("status", "unknown"), url=result.get("url", ""), auto_published=True)
             return
 
         else:
@@ -517,4 +600,5 @@ def run_agent(target_date: str | None = None, preview: bool = False) -> None:
             else:
                 reason = action
             tool_skip_today(reason)
+            _end_run("skipped", reason=reason)
             return

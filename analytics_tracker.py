@@ -275,6 +275,16 @@ def poll_metrics(post_id: str) -> dict:
                                  shares=excluded.shares, polled_at=excluded.polled_at""",
                             (tag.lower(), post_id, data["likes"], data["comments"], data["shares"], now),
                         )
+
+        # Durable copy — this DB is CI-cached and evictable, so the git-committed
+        # JSONL is what survives to be analysed later. See run_log.py.
+        try:
+            import run_log
+
+            run_log.snapshot_metrics(post_id, data)
+        except Exception as e:
+            log.warning(f"Durable metrics snapshot failed: {e}")
+
         return data
 
     except Exception as e:
