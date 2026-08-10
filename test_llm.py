@@ -1,7 +1,6 @@
 """
-Smoke test for the multi-provider LLM router.
-Run this AFTER you've added OPENROUTER_API_KEY (and optionally CEREBRAS_API_KEY)
-to your .env, to verify each provider actually responds.
+Smoke test for the LLM router.
+Run this after adding DEEPSEEK_API_KEY to your .env, to verify each model responds.
 
 Usage:
     python test_llm.py
@@ -10,7 +9,7 @@ For each model in llm_client.MODELS this will:
   1. Send a tiny prompt
   2. Print the response (or the error)
 
-Run on a Sunday evening — won't touch LinkedIn or Discord.
+Touches neither LinkedIn nor Discord.
 """
 
 import sys
@@ -44,11 +43,12 @@ def main():
 
     if failures > 0:
         print("Tips:")
-        print("  - 'OPENROUTER_API_KEY not set' → add it to .env")
+        print("  - 'DEEPSEEK_API_KEY is required but not set' → add it to .env")
         print("  - 'model not found' → check the model_id in llm_client.MODELS")
-        print("    (OpenRouter occasionally renames :free models; check openrouter.ai/models)")
         print("  - 'rate limit' → wait a minute and retry")
-        print("  - 'CEREBRAS_API_KEY not set' is OK if you didn't sign up for Cerebras")
+        print("  - empty response → confirm the thinking-disabled flag is still")
+        print("    set in llm_client._dispatch(); without it V4 models can burn")
+        print("    the whole token budget on hidden reasoning")
 
 
 if __name__ == "__main__":
