@@ -12,7 +12,7 @@ Providers used:
                  non-reasoning deepseek-chat behaviour (full budget to output).
                  Do NOT remove that flag or the tight-budget calls (scoring,
                  topic-pick) will intermittently return empty content again.
-  - Groq         (Llama 3.3 70B, Llama 3.1 8B)  — set GROQ_API_KEY (disabled)
+
 Public API:
   call_model(model_key, prompt, system, max_tokens) -> str
       Run a single named model.
@@ -34,8 +34,6 @@ import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
-# from groq import Groq          # disabled — using DeepSeek only
-# import groq as _groq_module    # disabled — using DeepSeek only
 import openai as _openai_module
 from openai import OpenAI as _OpenAI
 from dotenv import load_dotenv
@@ -50,7 +48,7 @@ load_dotenv()
 # ── Provider clients (lazy) ───────────────────────────────────────────────────
 # Importing this module must NOT raise on a missing key — keeps unit tests
 # and other importers that only need MODELS / display_name() working without
-# GROQ_API_KEY. The Groq client is created on first dispatch.
+# DEEPSEEK_API_KEY. The client is created on first dispatch.
 
 _deepseek: _OpenAI | None = None
 
@@ -69,18 +67,6 @@ def _get_deepseek() -> _OpenAI:
 # the model id string used by that provider's API.
 
 MODELS = {
-    # "llama-70b": {              # disabled — using DeepSeek only
-    #     "display":     "Llama 3.3 70B",
-    #     "provider":    "groq",
-    #     "model_id":    "llama-3.3-70b-versatile",
-    #     "temperature": 0.8,
-    # },
-    # "llama-8b": {               # disabled — using DeepSeek only
-    #     "display":     "Llama 3.1 8B",
-    #     "provider":    "groq",
-    #     "model_id":    "llama-3.1-8b-instant",
-    #     "temperature": 0.3,
-    # },
     "deepseek-pro": {
         "display":     "DeepSeek Chat",
         "provider":    "deepseek",
@@ -115,8 +101,6 @@ STRATEGY_MODEL    = "deepseek-pro"   # for weekly planning & topic ranking
 def _provider_available(provider: str) -> bool:
     if provider == "deepseek":
         return bool(os.environ.get("DEEPSEEK_API_KEY"))
-    # if provider == "groq":      # disabled — using DeepSeek only
-    #     return bool(os.environ.get("GROQ_API_KEY"))
     return False
 
 
@@ -277,8 +261,6 @@ def _dispatch(
 
     if provider == "deepseek":
         client = _get_deepseek()
-    # elif provider == "groq":    # disabled — using DeepSeek only
-    #     client = _get_groq()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

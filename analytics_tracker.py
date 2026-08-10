@@ -6,8 +6,10 @@ Exports:
   poll_metrics(post_id)                  -> dict
   poll_all_recent(days)                  -> None
   get_performance_summary()              -> dict
-  get_topic_history(days)                -> list[str]
   write_to_google_sheets(summary, slots) -> str | None
+
+Topic history for dedup lives in topic_log.py, not here — this DB is CI-cached
+and evictable, so it is never a reliable dedup source.
 """
 
 import base64
@@ -373,41 +375,6 @@ def get_performance_summary() -> dict:
         "model_wins":       {r["chosen_model"]: r["wins"] for r in model_rows},
         "model_scores":     {r["chosen_model"]: round(r["score"] or 0, 1) for r in model_rows},
     }
-
-
-def get_topic_history(days: int = 14) -> list[str]:
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    with _connect() as conn:
-        rows = conn.execute(
-            "SELECT topic FROM topics_history WHERE posted_at >= ? ORDER BY posted_at DESC",
-            (cutoff,),
-        ).fetchall()
-    return [r["topic"] for r in rows if r["topic"]]
-
-
-def get_recent_topic_texts(days: int = 10) -> list[dict]:
-    """Recent posted topics as {"text": title+angle, "days_ago": float} for
-    semantic-similarity dedup scoring (see topic_similarity.apply_dedup_penalty)."""
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    with _connect() as conn:
-        rows = conn.execute(
-            "SELECT topic, topic_text, posted_at FROM topics_history "
-            "WHERE posted_at >= ? ORDER BY posted_at DESC",
-            (cutoff,),
-        ).fetchall()
-    now = datetime.now()
-    out = []
-    for r in rows:
-        text = r["topic_text"] or r["topic"]
-        if not text:
-            continue
-        try:
-            posted = datetime.fromisoformat(r["posted_at"])
-            days_ago = max(0.0, (now - posted).total_seconds() / 86400)
-        except (ValueError, TypeError):
-            days_ago = 0.0
-        out.append({"text": text, "days_ago": days_ago})
-    return out
 
 
 def get_recent_post_urns(days: int = 7) -> list[str]:

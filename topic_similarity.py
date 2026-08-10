@@ -55,7 +55,7 @@ def apply_dedup_penalty(
     """Subtract a decaying semantic-similarity penalty from each topic's `_score`.
 
     `recent` = [{"text": "<title> — <angle>", "days_ago": float}, ...] from
-    analytics_tracker.get_recent_topic_texts(). Penalty for a candidate is
+    topic_log.get_recent_topic_texts(). Penalty for a candidate is
     `-max_penalty * best_similarity * decay`, where `decay` falls linearly
     from 1.0 (posted today) to 0.0 (posted `window_days` ago) — so a
     dominant story can resurface after the cooldown window instead of being

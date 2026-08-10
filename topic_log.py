@@ -78,8 +78,7 @@ def get_recent_titles(days: int = 30) -> list[str]:
 
 
 def get_recent_topic_texts(days: int = 30) -> list[dict]:
-    """Recent posted topics as {"text": title+angle, "days_ago": float} —
-    same shape as analytics_tracker.get_recent_topic_texts(), for
+    """Recent posted topics as {"text": title+angle, "days_ago": float}, for
     topic_similarity.apply_dedup_penalty / filter_hard_duplicates."""
     cutoff = datetime.now() - timedelta(days=days)
     now = datetime.now()
