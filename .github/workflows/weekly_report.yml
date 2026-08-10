@@ -5,6 +5,9 @@ on:
     - cron: '0 15 * * 0'  # Sunday 8pm PKT
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: posting-agent-db
   cancel-in-progress: false
@@ -50,3 +53,20 @@ jobs:
           LOG_FORMAT: json
         run: python discord_bot.py --send-weekly-report
         continue-on-error: true
+
+      - name: Commit durable metrics history
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain data/metrics_history.jsonl 2>/dev/null)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/metrics_history.jsonl
+            git commit -m "chore: record metrics snapshot [skip ci]"
+            for i in 1 2 3; do
+              git pull --rebase origin "${{ github.ref_name }}" && git push && break
+              echo "Push attempt $i failed — retrying..."
+              sleep 5
+            done
+          else
+            echo "No new metrics snapshots — skipping commit."
+          fi

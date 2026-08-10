@@ -97,6 +97,9 @@ LOG_LEVEL=INFO
 | `python discord_bot.py --send-weekly-report` | Send the weekly report variant |
 | `python discord_bot.py --rules-update` | Send a LinkedIn algorithm change alert |
 | `python auto_responder.py` | Fetch comments → suggest replies → Discord |
+| `python run_log.py summary --days 30` | Health read: runs, outcomes, where failures cluster |
+| `python run_log.py runs --days 14` | Recent runs and how each one ended |
+| `python run_log.py outcome --source post --ref <urn> --kind inbound --note "..."` | Record a real outcome — the only attribution input |
 | `python reddit_leads.py` | Sitewide Reddit hiring-intent scan → raw leads to Discord |
 | `python reddit_leads.py --dry-run` | Print candidates only, no send, no state save |
 
@@ -132,6 +135,9 @@ Reply in the `#approvals` channel within the 120-minute window:
 |------|------|-------|
 | `data/posted_topics.json` | Permanent — committed to git | The dedup source of truth. A topic here can never be picked again. |
 | `data/lead_query_state.json` | Permanent — committed to git | Rotation cursor for Reddit lead queries. |
+| `data/run_history.jsonl` | Permanent — committed to git | Every stage of every run: topic, score, approval action, publish result, errors. |
+| `data/metrics_history.jsonl` | Permanent — committed to git | Engagement snapshots. Mirrors `performance.db` so history survives cache eviction. |
+| `data/outcomes.jsonl` | Permanent — committed to git | Which post or lead produced a real conversation. Filled in by hand. |
 | `performance.db` | CI cache — evictable | Post metrics, hook/day performance, hashtag stats. Resets to defaults if evicted. |
 | `cache/linkedin_rules.json` | CI cache — 24h TTL | Live LinkedIn algorithm rules from Tavily. |
 | `seen_reddit_leads.json` | CI cache — 14-day window | Reddit lead dedup, including crosspost collapsing. |
@@ -168,5 +174,5 @@ python linkedin_auth.py
 
 - **Only one post variant is generated.** `VARIANT_MODELS` lists a single model, so the approval step never presents a real choice. Add model keys to `MODELS` + `VARIANT_MODELS` to enable it.
 - **No test suite.** `test_llm.py` is a model-connectivity smoke test only. The Discord 2000-character splitter, the banned-word fixer, and the dedup filter are all untested.
-- **`performance.db` is not durable.** It lives in GitHub Actions cache and can be evicted, silently resetting everything the system has learned about what performs.
-- **Engagement is the only measured outcome.** Nothing records whether a post produced an inbound lead, so the system can improve on likes while producing no business result.
+- **`performance.db` is not durable.** It lives in GitHub Actions cache and can be evicted, resetting the derived stats (hook performance, score threshold). Raw engagement numbers now survive in `data/metrics_history.jsonl`.
+- **Attribution is manual.** `data/outcomes.jsonl` exists and nothing fills it automatically — you record an outcome when a post or lead produces a real conversation. Until it has rows, engagement is still the only thing being measured.

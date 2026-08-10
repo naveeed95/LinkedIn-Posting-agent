@@ -35,6 +35,9 @@ LinkedIn posting agent for **The Tech Tutors** — automated content engine that
 | `python reddit_leads.py --dry-run` | Print candidates only — no Discord send, no seen-set save. |
 | `python reddit_leads.py --fetch-only` | Same as `--dry-run`. |
 | `python notify_failure.py --workflow-name X --run-url Y` | Post a workflow-failure alert to Discord. Called from workflow `if: failure()` steps, not by hand. |
+| `python run_log.py summary --days 30` | Health read over the durable log: run count, how runs ended, where they die, average score, recorded outcomes. |
+| `python run_log.py runs --days 14` | One line per run showing the stage sequence and final status. |
+| `python run_log.py outcome --source post --ref <urn> --kind inbound --note "..."` | Record a real-world outcome. The only way attribution data enters the system. |
 
 ## File map
 
@@ -55,6 +58,7 @@ auto_responder.py          # LinkedIn comment reply suggestions → Discord queu
 reddit_leads.py            # Sitewide Reddit search for hiring-intent leads → raw posts to Discord (no LLM, no reply draft, no promo)
 topic_similarity.py        # MiniLM embedding dedup: soft penalty, hard topic filter, post-content dup check
 topic_log.py               # Permanent, git-committed log of posted topics/post text (data/posted_topics.json)
+run_log.py                 # Durable append-only event stream — every run stage, metrics snapshots, outcomes
 notify_failure.py          # argparse CLI — Discord failure alert, called from workflow failure steps
 test_llm.py                # Smoke test: calls every model in llm_client.MODELS once
 .github/workflows/
@@ -70,6 +74,9 @@ performance.db             # SQLite: posts, metrics, topics_history, hashtag_met
 output/                    # Stale PDFs/PNGs from a removed graphic feature — no code writes here
 data/posted_topics.json    # Permanent dedup log — committed to git, never reset (see topic_log.py)
 data/lead_query_state.json # Permanent, git-committed, rotation cursor over the hiring-intent query combos
+data/run_history.jsonl     # Permanent, git-committed event stream — every stage of every run
+data/metrics_history.jsonl # Permanent, git-committed engagement snapshots (survives performance.db eviction)
+data/outcomes.jsonl        # Permanent, git-committed attribution — manually recorded, the revenue signal
 cache/linkedin_rules.json  # Algorithm rules cache (24h TTL, Tavily-fetched, gitignored)
 seen_reddit_leads.json     # Rolling dedup state (cache-tier, gitignored) — reddit_leads.py
 seen_comment_urns.json     # Rolling dedup state (cache-tier, gitignored) — auto_responder.py
@@ -239,6 +246,28 @@ Every post variant runs through `_fix_post_quality` — a `deepseek-pro` pass th
 
 `agent_runner.tool_score_post` computes a dynamic threshold: 90% of `recent_avg_score` from analytics, clamped 55–75. Falls back to 62 when no posting history exists. The pipeline regenerates if score is below threshold (max 3 generations total per run, shared with Discord-triggered regenerations).
 
+### Durable recording (`run_log.py`)
+
+Three storage tiers exist in this repo, and the distinction matters:
+
+| Tier | Example | Survives? |
+|------|---------|-----------|
+| stdout logs | `logger.get_logger()` output | No — Actions run retention only, not queryable across runs |
+| CI cache | `performance.db`, `cache/*.json` | No — evicted at 7-day idle or the 10GB repo cap |
+| **git-committed** | `data/*.json`, `data/*.jsonl` | **Yes — permanent** |
+
+`run_log.py` writes to the third tier. It records an **event stream, not per-run records**: every call appends one self-contained JSON line tagged with `run_id`, so a killed or cancelled run still leaves everything up to the kill point on disk. Reconstruct a run by grouping on `run_id`.
+
+Stages recorded by `agent_runner`: `run_start`, `topic_pick`, `research`, `generate` (per attempt, with full post text), `score` (with threshold and duplicate similarity), `approval` (including whether it auto-published on timeout), `topic_switch`, `publish`, `skip`, `error`, `run_end`. `reddit_leads` records `leads_scan` and one `lead` per surfaced post.
+
+Three rules when touching this module:
+
+1. **It must never raise into the caller.** Every write is wrapped — observability cannot take down a publish that already succeeded. Keep that property.
+2. **Everything written is committed to git.** `_redact()` strips any field whose name contains token/secret/key/password/authorization and clamps long strings. Never bypass it; a token in an error message would be published permanently.
+3. **Every workflow that writes these files must also commit them.** `daily_post.yml`, `reddit_leads.yml`, `analytics.yml`, and `weekly_report.yml` each have a commit step and `permissions: contents: write`. A workflow that writes without committing silently loses the data.
+
+`data/outcomes.jsonl` is the one file nothing writes automatically. It's the attribution record — which post or lead produced a real conversation — and it only fills up when a human runs `run_log.py outcome`. Engagement metrics cannot answer that question, which is why this file exists separately.
+
 ### Hook classification
 
 `analytics_tracker.log_post` infers `hook_type` from the post's first line by regex into four buckets: `question`, `stat`, `contrarian`, `bold`. `bold` is the catch-all. This is reverse-engineered after the fact, not emitted by the generator, so it does not map onto the seven named hook formulas in `WRITING_SYSTEM`.
@@ -271,7 +300,7 @@ Exception: `rules_update.yml` uploads `cache/linkedin_rules.json` as an **artifa
 
 ## Known production gotchas
 
-1. **`performance.db` lives in CI cache** — subject to eviction (7-day idle, 10GB repo cap). Everything learned from it (hook/day performance, top hashtags, the dynamic score threshold) silently resets to defaults when evicted. It's a secondary signal only; permanent topic-dedup relies on `data/posted_topics.json`.
+1. **`performance.db` lives in CI cache** — subject to eviction (7-day idle, 10GB repo cap). Everything computed from it (hook/day performance, top hashtags, the dynamic score threshold) silently resets to defaults when evicted. Raw engagement numbers are now mirrored durably to `data/metrics_history.jsonl` on every poll, so the history survives even though the derived stats reset.
 2. **Approval timeout publishes.** See "Daily post flow". No reply within the window means the post goes live.
 3. **Hacker News** — three-tier fetch (keyword+date → top-stories-by-points → no-date fallback) in `fetch_hacker_news`. Browser-like UA in `HEADERS` since Algolia rejects niche User-Agents.
 4. **Discord 2000-char split** — `_send_long_message` splits at `━━━` dividers then newlines. No automated test covers boundary cases.

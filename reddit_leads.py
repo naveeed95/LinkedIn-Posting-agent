@@ -702,6 +702,28 @@ def queue_leads(dry_run: bool = False) -> None:
     _save_seen_leads(new_seen)
     log.info(f"Sent {len(leads)} hiring-intent lead(s) to Discord.")
 
+    # Durable record of what was surfaced — so later you can ask which leads were
+    # ever seen, which queries actually produce them, and tie an outcome back to
+    # a specific lead via run_log.record_outcome(source="reddit_lead", ref=...).
+    try:
+        import run_log
+
+        run_id = run_log.new_run_id("reddit_leads")
+        run_log.record(
+            run_id, "leads_scan",
+            candidates=len(candidates),
+            sent=len(leads),
+            below_floor=len(candidates) < MIN_LEADS,
+        )
+        for c in leads:
+            run_log.record(
+                run_id, "lead",
+                fullname=c["fullname"], subreddit=c["subreddit"],
+                title=c["title"], url=c["url"], age=c["age"],
+            )
+    except Exception as e:
+        log.warning(f"Lead run_log record failed: {e}")
+
 
 if __name__ == "__main__":
     import sys
